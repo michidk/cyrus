@@ -598,8 +598,10 @@ module where it is defined and regenerate.
 - `src/control/tests/script_audio.rs` — Script binding and audio command contracts.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/main.rs` — Native install, persistence and control adapters with game/presentation assembly.
+- `src/original_images.rs` — Native book-boundary framebuffer capture for complete original-slot assembly.
 - `src/original_slot.rs` — Complete original-slot validation and atomic native filesystem publication.
 - `src/original_slot/assembly.rs` — Saved-image assembly composed with mandatory complete-session inverse validation.
+- `src/original_slot/capture.rs` — World-bound native encoded-colour readback for original saved-image assembly.
 - `src/original_slot/request.rs` — Application decisions for a completely validated original-slot export.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.

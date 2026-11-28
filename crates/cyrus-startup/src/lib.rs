@@ -23,8 +23,8 @@ pub use overlay::OverlayPlugin;
 mod menu;
 mod save_load;
 pub use save_load::{
-    GameplayThumbnail, ORIGINAL_IMPORT_LIMITATION, SaveLoadHost, SaveLoadRequest, SaveSlot,
-    SaveSlotSource,
+    GameplayScreenshot, GameplayThumbnail, ORIGINAL_IMPORT_LIMITATION, SaveLoadHost,
+    SaveLoadRequest, SaveSlot, SaveSlotSource,
 };
 mod menu_raster;
 mod movie;
@@ -154,6 +154,11 @@ struct StartupContent;
 #[derive(Component)]
 struct FillWindow;
 
+/// The book's single framebuffer request has been queued, before render extraction.
+/// Hosts may attach observers/source identity after this set without a duplicate request.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct GameplayCaptureRequest;
+
 impl Plugin for StartupPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<StartupPresentation>()
@@ -181,6 +186,7 @@ impl Plugin for StartupPlugin {
             Last,
             // The death exit requests the book in this same schedule; the view is captured after it.
             save_load::capture_gameplay
+                .in_set(GameplayCaptureRequest)
                 .after(cyrus_script::script::WorldLoopExit)
                 .run_if(in_state(AppState::InGame)),
         );
