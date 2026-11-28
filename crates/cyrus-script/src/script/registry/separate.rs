@@ -17,7 +17,7 @@ impl ScriptWorld {
             return;
         };
         if let Some(pool) = &mut self.authored_pool {
-            pool.refresh(actor.name(), base, runtime.variables());
+            pool.refresh(index, actor.name(), base, runtime.variables());
         }
         let Some(source) = self.globals.separate_native_source.as_mut() else {
             return;

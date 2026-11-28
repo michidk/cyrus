@@ -368,6 +368,12 @@ live integer variables and rejects missing retained state, ambiguous receivers,
 overlapping ranges, unsupported references and inconsistent temporary-source
 aliases. Older native snapshots remain loadable, but cannot
 export an original pool without retained state.
+Restored pools retain the explicit SMOB/SMCO receiver bindings separately from
+fresh initialization contexts. Only those restored bindings can overlay the
+saved pool; a separate light context with the same initial local range is not
+another restored owner. Receiver identity, range and complete binding census
+remain validated through native snapshots. Execution from an unbound context
+makes export explicitly unsupported rather than replacing retained values.
 It emits only the SVRG payload and performs no filesystem writes. Complete slot
 assembly, atomic publication and confirmed replacement remain tracked by Cyrus
 #419; native config-directory saves remain available.
