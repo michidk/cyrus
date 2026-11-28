@@ -96,6 +96,7 @@ pub use persistence::{
     LogicalSessionCandidate, LogicalSessionRestoreInputs, LogicalSessionRestorePlan,
     LogicalSessionSnapshot, WorldRestoreContext, WorldSnapshot, WorldSnapshotSources,
 };
+mod authored_pool;
 pub(super) mod player;
 pub(super) mod prevalidation;
 pub(super) mod queued;
@@ -750,6 +751,7 @@ pub struct ScriptWorld {
     pub world: u32,
     pub content_id: String,
     generation: u64,
+    authored_pool: Option<authored_pool::AuthoredPool>,
     flags: Vec<i32>,
     flag_state: super::flags::Flags,
     updates: cyrus_assets::script::UpdateSettings,
@@ -1679,6 +1681,7 @@ impl ScriptWorld {
             })
             .transpose()?;
         Ok(Self {
+            authored_pool: authored_pool::AuthoredPool::initialized(scripts).ok(),
             map_updates: Default::default(),
             updates: scripts.updates,
             animation_strict: None,
@@ -6826,6 +6829,7 @@ mod fighting_tests {
             attributes: vec![],
         };
         let mut registry = ScriptWorld {
+            authored_pool: None,
             world: 1,
             content_id: String::new(),
             generation: 1,

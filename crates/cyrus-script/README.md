@@ -360,8 +360,14 @@ explicitly. This follows preservation's [full object load](https://github.com/mi
 
 Original authored-local export is a record-level API under `original-save-import`.
 `ScriptWorld::export_original_authored_locals` maps installed instance ranges to
-live integer variables, rejecting missing or ambiguous owners, overlapping or
-unowned words, unsupported references and inconsistent temporary-source aliases.
+a retained complete authored pool, including COMMON allocation state distinct
+from its shell execution context and words outside receiver ranges. Original
+import replaces the entire pool; native snapshots retain
+its installed owner/range identity and current values. Export overlays current
+live integer variables and rejects missing retained state, ambiguous receivers,
+overlapping ranges, unsupported references and inconsistent temporary-source
+aliases. Older native snapshots remain loadable, but cannot
+export an original pool without retained state.
 It emits only the SVRG payload and performs no filesystem writes. Complete slot
 assembly, atomic publication and confirmed replacement remain tracked by Cyrus
 #419; native config-directory saves remain available.

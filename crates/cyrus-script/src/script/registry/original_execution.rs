@@ -354,6 +354,8 @@ impl ScriptWorld {
                 Ok((index, Some(runtime), native, commands, navigation))
             })
             .collect::<Result<Vec<_>>>()?;
+        let authored_pool = super::authored_pool::AuthoredPool::imported(scripts, saved.locals)
+            .with_context(|| format!("world {} SVRG authored pool import", self.world))?;
         // Every fallible owner/service binding has completed. No callback is run.
         for actor in extra_shells {
             let index = self.actors.len();
@@ -378,6 +380,7 @@ impl ScriptWorld {
                 actor.control.as_mut().unwrap().navigation = navigation;
             }
         }
+        self.authored_pool = Some(authored_pool);
         if let Some(nodes) = &mut self.walk_nodes {
             nodes.reset();
         }

@@ -5,7 +5,7 @@ use cyrus_assets::script::Scripts;
 use rgpre::import::savegame::SaveScriptLocals;
 
 impl ScriptWorld {
-    /// Encode the complete SVRG payload from live integer variables.
+    /// Encode SVRG from retained authored allocations and current live integer variables.
     /// Unsupported ownership rejects the record before any slot filesystem mutation.
     /// Pool addressing follows preservation `docs/formats/SAVEGAME.md`, authored script locals.
     pub fn export_original_authored_locals(&self, scripts: &Scripts) -> Result<Vec<u8>> {
@@ -19,68 +19,18 @@ impl ScriptWorld {
             self.world == scripts.world && self.content_id == scripts.content_id,
             "source identity does not match installed world/content"
         );
-        let mut pool = std::collections::BTreeMap::new();
-        for (name, definition) in &scripts.actors {
-            let count = definition.program.variables.len();
-            if count == 0 {
-                continue;
-            }
-            let offsets = definition
-                .pool_offsets
-                .with_context(|| format!("actor {name}: installed pool metadata missing"))?;
-            for instance in 0..usize::from(definition.instances) {
-                let offsets = offsets.for_instance(instance, count)?;
-                let base = offsets
-                    .locals
-                    .with_context(|| format!("actor {name}: local offset missing"))?;
-                let owners: Vec<_> = self
-                    .actors
-                    .iter()
-                    .filter(|actor| {
-                        actor.name() == name
-                            && actor.pool_offsets.is_some_and(|p| p.locals == Some(base))
-                    })
-                    .collect();
-                ensure!(
-                    owners.len() == 1,
-                    "actor {name} instance {instance}: expected one live pool owner, found {}",
-                    owners.len()
-                );
-                let runtime = owners[0]
-                    .runtime
-                    .as_ref()
-                    .with_context(|| format!("actor {name}: live variables unavailable"))?;
-                ensure!(
-                    runtime.variables().len() == count,
-                    "actor {name}: live variable count differs from installed definition"
-                );
-                for (index, value) in runtime.variables().iter().enumerate() {
-                    let offset = base
-                        .checked_add(
-                            u32::try_from(index)?
-                                .checked_mul(4)
-                                .context("local offset overflow")?,
-                        )
-                        .context("pool offset overflow")?;
-                    let value = value.integer().with_context(|| {
-                        format!(
-                            "actor {name} local {index}: original reference encoding unsupported"
-                        )
-                    })?;
-                    ensure!(
-                        pool.insert(offset, value).is_none(),
-                        "actor {name}: overlapping authored ownership"
-                    );
-                }
-            }
-        }
-        for (index, offset) in pool.keys().enumerate() {
-            ensure!(
-                usize::try_from(*offset)?
-                    == index.checked_mul(4).context("pool length overflow")?,
-                "unowned authored pool words before offset {offset}"
-            );
-        }
+        super::authored_pool::AuthoredPool::validate_layout(scripts)?;
+        let retained = self
+            .authored_pool
+            .as_ref()
+            .context("retained authored pool missing")?;
+        let words = retained.current_words(self, scripts)?;
+        let pool: std::collections::BTreeMap<_, _> = words
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(index, word)| ((index * 4) as u32, word))
+            .collect();
         if let Some(source) = &self.globals.separate_native_source
             && !source.locals.is_empty()
         {
@@ -107,6 +57,6 @@ impl ScriptWorld {
                 );
             }
         }
-        Ok(pool.into_values().collect())
+        Ok(words)
     }
 }

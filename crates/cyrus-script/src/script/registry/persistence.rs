@@ -867,6 +867,8 @@ pub struct WorldSnapshot {
     generation: u64,
     flags: super::super::GlobalFlagsSnapshot,
     actors: Vec<ActorSnapshot>,
+    #[serde(default)]
+    authored_pool: Option<super::authored_pool::AuthoredPool>,
     spatial: Option<super::super::spatial::SpatialSnapshot>,
     activation: super::super::activation::ActivationSnapshot,
     actor_lists: Option<super::super::order::ActorListsSnapshot>,
@@ -913,6 +915,7 @@ impl WorldSnapshot {
                 .iter()
                 .map(cyrus_game::rope::Rope::state)
                 .collect(),
+            authored_pool: world.authored_pool.clone(),
             version: 1,
             world: world.world,
             content_id: world.content_id.clone(),
@@ -1003,6 +1006,10 @@ impl WorldSnapshot {
             "world {}: saved actor census differs",
             self.world
         );
+        if let Some(pool) = &self.authored_pool {
+            pool.validate(sources.scripts)?;
+        }
+        candidate.authored_pool = self.authored_pool;
         let count = candidate.actors.len();
         let rebind = |old_generation, index| -> Result<ScriptActorId> {
             ensure!(

@@ -469,6 +469,15 @@ fn assert_bound_pose_owners(
 
 #[test]
 fn retained_execution_population_restores_without_reissuing_callbacks() -> Result<()> {
+    retained_execution_population(true)
+}
+
+#[test]
+fn retained_authored_pool_round_trips_receiverless_common() -> Result<()> {
+    retained_execution_population(false)
+}
+
+fn retained_execution_population(poll_wait: bool) -> Result<()> {
     use cyrus_script::script::{DialogueState, OriginalExecutionOwners, WorldSnapshotSources};
     use rgpre::import::savegame::{
         parse_save_code_owners, parse_save_objects, parse_save_script_locals, parse_save_shells,
@@ -509,7 +518,37 @@ fn retained_execution_population_restores_without_reissuing_callbacks() -> Resul
         let objects = parse_save_objects(section(*b"SMOB")?)?;
         let codes = parse_save_code_owners(section(*b"SMCO")?)?;
         let shells = parse_save_shells(section(*b"SMSH")?)?;
-        let locals = parse_save_script_locals(section(*b"SVRG")?)?;
+        let mut local_bytes = section(*b"SVRG")?.to_vec();
+        eprintln!(
+            "world {} COMMON instances={} variables={} offsets={:?}; MAPCOUNT={:?}",
+            scripts.world,
+            scripts.actors["COMMON"].instances,
+            scripts.actors["COMMON"].program.variables.len(),
+            scripts.actors["COMMON"].pool_offsets,
+            scripts.actors.get("MAPCOUNT").map(|d| (
+                d.instances,
+                d.program.variables.len(),
+                d.pool_offsets
+            ))
+        );
+        let common = scripts
+            .actors
+            .get("COMMON")
+            .context("COMMON definition absent")?;
+        let common_base = common
+            .pool_offsets
+            .context("COMMON pool absent")?
+            .locals
+            .context("COMMON locals absent")? as usize;
+        // Deliberately differ from both installed initialization and the saved value.
+        let original_common =
+            i32::from_le_bytes(local_bytes[common_base..common_base + 4].try_into()?);
+        let changed_common = original_common.wrapping_add(12345);
+        if !poll_wait {
+            local_bytes[common_base..common_base + 4]
+                .copy_from_slice(&changed_common.to_le_bytes());
+        }
+        let locals = parse_save_script_locals(&local_bytes)?;
         let maps = (0..animations.metadata["walk_node_maps"]
             .as_array()
             .context("walk maps absent")?
@@ -576,6 +615,100 @@ fn retained_execution_population_restores_without_reissuing_callbacks() -> Resul
             &scripts,
             &animations,
         )?;
+        assert!(
+            world
+                .actors()
+                .iter()
+                .filter(|actor| actor.name() == "COMMON")
+                .all(|actor| matches!(
+                    actor.source,
+                    cyrus_script::script::ScriptActorSource::Shell(_)
+                )),
+            "COMMON dispatch contexts must remain shells, not authored pool receivers"
+        );
+        assert_eq!(
+            world.export_original_authored_locals(&scripts)?,
+            local_bytes,
+            "complete imported pool, including changed COMMON, must survive export"
+        );
+        let snapshot = world.snapshot(&sources)?;
+        let encoded = serde_json::to_value(&snapshot)?;
+        let restore = |value| {
+            ScriptWorld::from_snapshot(
+                serde_json::from_value(value)?,
+                &sources,
+                cyrus_script::script::WorldRestoreContext {
+                    generation: 9877,
+                    globals: {
+                        let mut template = ScriptWorld::prepare(&scripts, 9999)?;
+                        *template
+                            .globals_mut()
+                            .dialogue_mut()
+                            .context("dialogue absent")? =
+                            DialogueState::from_original_load(&scripts.dialogue)?;
+                        std::mem::take(template.globals_mut())
+                    },
+                    samples: &channels,
+                },
+            )
+        };
+        let mut wrong_range = encoded.clone();
+        let base = wrong_range["authored_pool"]["owners"][0]["base"]
+            .as_u64()
+            .context("owner base missing")?;
+        wrong_range["authored_pool"]["owners"][0]["base"] = serde_json::json!(base + 4);
+        assert!(
+            restore(wrong_range).is_err(),
+            "changed retained range must reject"
+        );
+        let mut truncated = encoded.clone();
+        truncated["authored_pool"]["words"]
+            .as_array_mut()
+            .unwrap()
+            .pop();
+        assert!(
+            restore(truncated).is_err(),
+            "missing retained word must reject"
+        );
+        let mut missing = encoded;
+        missing.as_object_mut().unwrap().remove("authored_pool");
+        let legacy = restore(missing)?;
+        let error = format!(
+            "{:#}",
+            legacy
+                .export_original_authored_locals(&scripts)
+                .unwrap_err()
+        );
+        assert!(error.contains("retained authored pool missing"), "{error}");
+        let restored = ScriptWorld::from_snapshot(
+            snapshot,
+            &sources,
+            cyrus_script::script::WorldRestoreContext {
+                generation: 9876,
+                globals: {
+                    let mut template = ScriptWorld::prepare(&scripts, 9999)?;
+                    *template
+                        .globals_mut()
+                        .dialogue_mut()
+                        .context("dialogue absent")? =
+                        DialogueState::from_original_load(&scripts.dialogue)?;
+                    std::mem::take(template.globals_mut())
+                },
+                samples: &channels,
+            },
+        )?;
+        assert_eq!(
+            restored.export_original_authored_locals(&scripts)?,
+            local_bytes
+        );
+        if !poll_wait {
+            eprintln!(
+                "world {}: complete {}-word imported pool and changed COMMON survive native snapshot/export; range, truncation and missing-state controls reject",
+                scripts.world,
+                local_bytes.len() / 4
+            );
+            continue;
+        }
         let programs = scripts
             .actors
             .values()

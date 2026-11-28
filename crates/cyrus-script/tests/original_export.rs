@@ -90,7 +90,7 @@ fn authored_locals_export_rejects_unknown_pool_and_unowned_words() {
         world.export_original_authored_locals(&scripts).unwrap_err()
     );
     assert!(
-        error.contains("SVRG") && error.contains("unowned"),
+        error.contains("SVRG") && error.contains("retained authored pool missing"),
         "{error}"
     );
 }
@@ -143,7 +143,7 @@ fn authored_locals_export_rejects_unaligned_ranges() {
 }
 
 #[test]
-fn installed_authored_local_export_rejects_missing_live_pool_owners() -> anyhow::Result<()> {
+fn installed_fresh_export_rejects_unretained_pool_storage() -> anyhow::Result<()> {
     use anyhow::Context;
     let Some(path) = std::env::var_os("CYRUS_ORIGINAL_SAVE") else {
         eprintln!("skipped: supply CYRUS_ORIGINAL_SAVE for installed export");
@@ -168,17 +168,14 @@ fn installed_authored_local_export_rejects_missing_live_pool_owners() -> anyhow:
     )?)?;
     let scripts = cyrus_assets::script_export::prepare(&map, &install.root, entry.index)?;
     let world = ScriptWorld::prepare(&scripts, 1)?;
-    // Installed definitions allocate local ranges even without a live receiver.
-    // Export must report the missing owner instead of resetting those words.
+    assert!(scripts.actors.contains_key("COMMON"));
+    // Definitions alone do not provide unassigned pool words. Fresh-world export
+    // must remain unsupported until the complete allocation is available.
     let error = format!(
         "{:#}",
         world.export_original_authored_locals(&scripts).unwrap_err()
     );
-    assert!(
-        error.contains(&format!("world {} SVRG", entry.index)),
-        "{error}"
-    );
-    assert!(error.contains("live pool owner"), "{error}");
+    assert!(error.contains("retained authored pool missing"), "{error}");
     Ok(())
 }
 
