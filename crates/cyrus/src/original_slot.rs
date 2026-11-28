@@ -2,6 +2,7 @@
 pub mod assembly;
 pub mod capture;
 pub mod request;
+pub mod worlds;
 
 use anyhow::{Context, Result, ensure};
 use rgpre::import::savegame::{
