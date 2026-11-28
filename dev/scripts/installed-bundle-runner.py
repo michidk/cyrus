@@ -330,6 +330,12 @@ def runtime_image(root, image):
     return actual
 
 
+def original_save_install_arguments(saves):
+    """Expose the retained slot group through the installed save-listing interface."""
+    return ['-v', f'{saves}:/fixture-install/SAVEGAME:ro',
+            '-e', 'REDGUARD_ORIGINAL_SAVE_INSTALL=/fixture-install']
+
+
 def libtest_arguments(test_threads):
     """Bound harness concurrency without filtering any exported tests."""
     if test_threads is not None and test_threads <= 0:
@@ -395,7 +401,8 @@ def main():
                 dict(group=fixture_hash(selected_saves), original_slot=default_fixture))).hexdigest()
             binding = dict(artifact=expected, manifest=manifest_hash, projection=projection_hash,
                            image=image, test=test, install=str(install), install_identity=install_identity, fixture=fixture,
-                           arguments=arguments, package_cwd=str(paths[test['package']]))
+                           arguments=arguments, package_cwd=str(paths[test['package']]),
+                           original_save_install='/fixture-install')
             if test['package'] not in {'cyrus-script', 'cyrus-soup'}:
                 binding['media_plan'] = media
             receipt = receipt_path(results, test['sha256'], binding)
@@ -423,6 +430,7 @@ def main():
                         '-e', 'CYRUS_ORIGINAL_SAVE=/original-saves/SAVEGAME.000',
                         '-e', 'REDGUARD_ORIGINAL_SAVE_DIR=/original-saves',
                         '-e', 'LD_LIBRARY_PATH=' + ':'.join(sorted({str(PurePosixPath(target) / PurePosixPath(e['path']).parent) for e in entries if e['role'] == 'runtime'}))]
+                base += original_save_install_arguments(saves)
                 print('waiting for per-harness lock', test['target'], flush=True)
                 for mount in media:
                     base += ['--mount', f'type=bind,src={mount["source"]},dst={mount["destination"]},readonly']

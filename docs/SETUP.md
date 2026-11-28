@@ -3559,6 +3559,10 @@ When changing media layouts, the runner removes obsolete, untracked, empty
 `game.gog` and `game.ins` bind placeholders from its source checkout. It verifies
 all source blobs and rejects nonempty files or symlinks before removing either
 placeholder. Installed media and tracked source files are preserved.
+The explicit retained original-save group is also mounted read-only under a
+fixture install and exposed through `REDGUARD_ORIGINAL_SAVE_INSTALL`, so the
+package save-listing and saved-image assembly checks use authentic slots without
+writing them into the linked game installation. This mapping is receipt-bound.
 Pass `--test-threads 1` to run every test in each harness serially when concurrent
 asset-heavy tests exhaust their individual loading deadlines. The default retains
 libtest concurrency. The worker count must be positive and is part of the receipt

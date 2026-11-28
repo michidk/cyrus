@@ -62,6 +62,15 @@ class Tests(unittest.TestCase):
             with patch.object(m.subprocess,'run',return_value=missing):
                 with self.assertRaisesRegex(ValueError,'no retained runtime descriptor'):m.runtime_image(root,'task-runtime')
 
+    def test_original_save_install_uses_read_only_group_without_changing_install(self):
+        with tempfile.TemporaryDirectory() as d:
+            saves = Path(d) / 'SAVEGAME'
+            (saves / 'SAVEGAME.000').mkdir(parents=True)
+            args = m.original_save_install_arguments(saves)
+            self.assertEqual(args, ['-v', f'{saves}:/fixture-install/SAVEGAME:ro',
+                                    '-e', 'REDGUARD_ORIGINAL_SAVE_INSTALL=/fixture-install'])
+            self.assertEqual(sorted(path.name for path in Path(d).iterdir()), ['SAVEGAME'])
+
     def test_libtest_worker_limit_preserves_full_suite_and_default_arguments(self):
         self.assertEqual(m.libtest_arguments(None), ['--nocapture'])
         for workers in [1, 4]:
