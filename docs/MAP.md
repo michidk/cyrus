@@ -307,6 +307,7 @@ module where it is defined and regenerate.
 - `src/script/hud.rs` — Session inventory, candle feedback, compass use, power-up slots and logbook writes.
 - `src/script/hud/original.rs` — Saved HUD ownership is decoded without acquisition callbacks or storage writes.
 - `src/script/inventory.rs` — Session item ownership and selection from installed inventory definitions.
+- `src/script/inventory/original_export.rs` — Lossless inverse mapping of retained inventory state to original SVIT records.
 - `src/script/journal.rs` — Accepted journal text and AddLog duplicate history, independent of presentation.
 - `src/script/jump_motion.rs` — The code shared by an actor's queued-motion (`jump_flag`) and falling (`fall_flag`) bytes.
 - `src/script/lineup.rs` — The pickup and plain player-alignment movers, as decision logic over a port.

@@ -371,3 +371,28 @@ export an original pool without retained state.
 It emits only the SVRG payload and performs no filesystem writes. Complete slot
 assembly, atomic publication and confirmed replacement remain tracked by Cyrus
 #419; native config-directory saves remain available.
+
+`InventorySnapshot::export_original` emits the SVIT payload from current native
+inventory state in installed item order, excluding the unsaved terminal item.
+Original import and native snapshots retain flag representations and source
+identity. Export requires complete use counters and saved push history; missing
+metadata, ambiguous selection and unsupported noncanonical flag transitions
+reject with item/record context. Native saves remain available without original
+export metadata. SVIT and SVRG are individual records, never complete slots.
+The semantic inventory codec is provided by preservation's
+[SVIT state API](https://github.com/michidk/redguard-preservation/commit/fe1db0d69b5549fbe987986443ff32f63fc9e849).
+
+`GlobalFlagsSnapshot::export_original` emits current SVGF numeric values in the
+validated installed flag order. It supports the documented unlatched kind bytes
+and rejects latched state whose serialized representation is not yet supported.
+Export does not clear latches or restore initial values. This is another
+record-level mapping, not complete slot validation.
+
+`OriginalOwnerContinuation::encode_code` maps a validated current native VM and
+all six invocation-word sets back into a retained SMCO code-owner record through
+preservation's semantic execution writer. Exact installed source, owner and
+native task token/source bindings are required. Unsupported temporary Anchor or
+pause state, failed/legacy VM state and mismatched bindings reject before any
+record mutation. Authored locals still belong to SVRG; other packed fields and
+owner allocation remain retained. This is not a complete record population or
+slot export.

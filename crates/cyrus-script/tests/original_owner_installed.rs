@@ -153,17 +153,111 @@ fn stage_codes(
             .context("saved allocation absent")?;
         let name = &scripts.instances[allocation.placement_index].actor;
         let definition = &scripts.actors[name];
-        OriginalOwnerContinuation::decode_code(
-            owner,
-            locals,
-            OriginalCodeBinding {
-                owner_id: owner.owner_id,
-                origin: CodeOrigin(definition.code_origin),
-                tasks: tasks(owner.task_slots(), operands)?,
-            },
+        let bound_tasks = tasks(owner.task_slots(), operands)?;
+        let origin = CodeOrigin(definition.code_origin);
+        let binding = || OriginalCodeBinding {
+            owner_id: owner.owner_id,
+            origin,
+            tasks: bound_tasks,
+        };
+        let imported = OriginalOwnerContinuation::decode_code(owner, locals, binding(), sources)
+            .with_context(|| format!("code owner {} {}", owner.owner_id, name))?;
+        let before = encode_save_code_owners(std::slice::from_ref(owner));
+        let mut changed = imported.vm.continuation(origin, sources)?;
+        changed.result = changed.result.wrapping_add(7);
+        changed.saved_result = changed.saved_result.wrapping_add(11);
+        changed.status[5] ^= 0x80;
+        changed.timers[5] = changed.timers[5].wrapping_add(17);
+        let tokens = imported
+            .vm
+            .task_tokens()
+            .map(|token| (token, token))
+            .collect();
+        let native = cyrus_soup::Runtime::from_snapshot(
+            origin,
+            cyrus_soup::persistence::Snapshot::from_continuation(origin, changed, sources)?,
             sources,
-        )
-        .with_context(|| format!("code owner {} {}", owner.owner_id, name))?;
+            &tokens,
+            "changed installed code owner".into(),
+        )?;
+        let mut current = OriginalOwnerContinuation {
+            vm: native.snapshot(sources)?,
+            invocation_words: imported.invocation_words,
+        };
+        current.invocation_words[5][3] ^= u32::MAX;
+        let exported = current.encode_code(owner, binding(), sources)?;
+        let encoded = encode_save_code_owners(&[exported]);
+        ensure!(
+            encoded != before,
+            "changed native execution was not exported"
+        );
+        let exported = parse_save_code_owners(&encoded)?.remove(0);
+        ensure!(
+            exported.owner_id == owner.owner_id
+                && exported.script_local_offset() == owner.script_local_offset()
+                && exported.script_references().native_hook
+                    == owner.script_references().native_hook,
+            "independent owner allocation changed"
+        );
+        let roundtrip =
+            OriginalOwnerContinuation::decode_code(&exported, locals, binding(), sources)?;
+        ensure!(
+            serde_json::to_value(&roundtrip.vm)? == serde_json::to_value(&current.vm)?
+                && roundtrip.invocation_words == current.invocation_words,
+            "changed native execution did not survive original record roundtrip"
+        );
+        for unsupported in ["anchor", "pause"] {
+            let mut state = current.vm.continuation(origin, sources)?;
+            if unsupported == "anchor" {
+                state.anchor = 1;
+            } else {
+                state.pause[5] = 1;
+            }
+            let invalid = OriginalOwnerContinuation {
+                vm: cyrus_soup::persistence::Snapshot::from_continuation(origin, state, sources)?,
+                invocation_words: current.invocation_words,
+            };
+            let error = format!(
+                "{:#}",
+                invalid.encode_code(owner, binding(), sources).unwrap_err()
+            );
+            ensure!(
+                error.contains("SMCO") && error.to_ascii_lowercase().contains(unsupported),
+                "missing contextual unsupported-state error: {error}"
+            );
+            ensure!(
+                encode_save_code_owners(std::slice::from_ref(owner)) == before,
+                "failed export mutated source owner"
+            );
+        }
+        let wrong = OriginalCodeBinding {
+            owner_id: u32::MAX,
+            ..binding()
+        };
+        ensure!(
+            current.encode_code(owner, wrong, sources).is_err(),
+            "foreign owner accepted"
+        );
+        let mut wrong = binding();
+        if let Some(task) = wrong.tasks.iter_mut().flatten().next() {
+            task.token = task.token.wrapping_add(1000);
+        } else {
+            wrong.tasks[0] = Some(ContinuationTask {
+                token: 1000,
+                source: *operands
+                    .values()
+                    .next()
+                    .context("installed task source absent")?,
+            });
+        }
+        ensure!(
+            current.encode_code(owner, wrong, sources).is_err(),
+            "task ownership mismatch accepted"
+        );
+        ensure!(
+            encode_save_code_owners(std::slice::from_ref(owner)) == before,
+            "failed ownership export mutated source owner"
+        );
     }
     Ok(())
 }
