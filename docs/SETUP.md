@@ -37,6 +37,11 @@ To play a downloaded package, start with [Playing cyrus](PLAYING.md#start). This
   Linux libraries (alsa, udev, wayland, xkbcommon dev headers).
 - Docker only for the original-game and virtual-display runners. Native source runs do not require it.
 
+Original scenario runs resolve the writable run directory and shared `magic/`
+root before passing bind sources to Docker. A checkout-local symlink can name
+retained host state even when the Docker daemon cannot see the checkout alias.
+Run-local map validation and per-run ownership still apply to the resolved paths.
+
 ### Native Windows verification
 
 Use the native Rust/MSVC toolchain and keep stable Rust current enough for the

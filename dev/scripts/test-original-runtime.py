@@ -39,6 +39,23 @@ class OriginalRuntime(unittest.TestCase):
                  'owned:/tmp/original_script_locals.py', 'owned:/tmp/original_source_state.py'])
             self.assertTrue(all(kwargs['check'] for _, kwargs in calls[1:]))
 
+    def test_symlinked_worktree_magic_uses_canonical_daemon_bind_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            retained = root / 'retained'
+            retained.mkdir()
+            magic, run = self.fixture(retained)
+            alias = root / 'worktree-magic'
+            alias.symlink_to(magic, target_is_directory=True)
+            calls = []
+            scenario.start_original_runtime('owned', alias / 'run', 'retained:image',
+                magic=alias, command=lambda *args, **kwargs: calls.append(args))
+            for command in calls[1:3]:
+                self.assertIn(f'{run}:/game', command)
+                self.assertFalse(any(str(alias) in argument for argument in command))
+            self.assertIn(f'{magic}/gog:/gog:ro', calls[2])
+            self.assertEqual((run / 'game.gog').read_bytes(), b'synthetic disc')
+
     def test_disc_preparation_replaces_only_empty_mountpoint_and_shares_canonical_bytes(self):
         with tempfile.TemporaryDirectory() as directory:
             magic, run = self.fixture(directory)

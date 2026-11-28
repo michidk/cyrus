@@ -92,7 +92,8 @@ def prepare_original_disc(run, *, magic=None):
 
 def start_original_runtime(name, run, image, *, command=sh, magic=None):
     """Prepare one owned runtime; retain host evidence and clean up failed startup."""
-    magic = MAGIC if magic is None else Path(magic)
+    magic = (MAGIC if magic is None else Path(magic)).resolve()
+    run = Path(run).resolve()
     reader = magic / "tools/original-state.py"
     if not reader.is_file():
         raise FileNotFoundError(f"{reader}: restore the local original-game tooling bundle")
