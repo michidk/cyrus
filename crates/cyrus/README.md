@@ -26,6 +26,35 @@ context retained in the error.
 Original entries cannot overwrite or delete an installed save. Install-backed listing tests
 use `REDGUARD_ORIGINAL_SAVE_INSTALL=/path/to/Redguard` and report a skip when absent.
 
+The native library's `original_slot` module is a separate complete-slot filesystem
+boundary. `CompleteSlot::validate` requires an explicit `CompleteSlotValidator`
+with the exact world/file/ordered-record census and semantic validation of every
+record, cross-file reference and journal. It encodes all bytes in memory before
+publication can touch the filesystem. Container parsing or the supported SVRG
+record exporter alone cannot establish a complete slot. No production complete
+validator or gameplay save routing is enabled while inverse mappings remain open;
+native config-directory saves remain available.
+
+`original_slot::publish` takes an existing real SAVEGAME directory and a numeric
+three-digit slot identity. It stages every resource in a temporary directory on
+that filesystem. Linux and macOS use an atomic no-replace rename for new slots
+and an atomic directory exchange for replacements. Replacing a slot requires
+`Replacement::ConfirmedByPlayer(existing)`, supplied only after explicit player confirmation.
+Capture `existing` with `ExistingSlot::inspect` before that confirmation. Its opaque
+token binds the canonical root, selected slot, exact directory identity and all
+resource names/contents, including unknown regular files. A changed version or
+wrong root/slot rejects before staging and is checked again before commit.
+Publishers serialize through an advisory SAVEGAME directory lock; external writers
+must not save concurrently without honoring that lock.
+Unsupported platforms or filesystem operations reject without a delete/rename
+fallback. Resource names cannot escape the slot, duplicate case aliases and
+symlinks reject, and failed staging removes the operation's temporary files.
+After the commit point, cleanup or directory-sync errors are returned separately
+in the successful `Publication`; callers must not retry them as failed saves.
+This promises atomic visibility of a complete directory, not crash recovery or
+original-game export acceptance. The filesystem tests use synthetic validators
+and temporary directories, never installed save destinations.
+
 The public adapter regression uses an existing replay-controlled native process:
 `python3 dev/scripts/verify-original-slot.py --port 7117 --slot SLOT --world WORLD
 --frame-scale MEASURED_Q8 --output magic/slot-acceptance`. It advances a
