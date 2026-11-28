@@ -636,7 +636,7 @@ impl App {
     fn cheats_page(&mut self, ui: &mut egui::Ui) {
         theme::section(ui, "Cheats");
         ui.label(theme::muted(
-            "They change how the game plays and are kept in your cyrus settings, not in the game folder.",
+            "They change how the game plays and are kept in REDGUARD.CHT in the game folder, which the original game shares. Without that file every cheat is off.",
         ));
         let mut changed = false;
         for cheat in Cheat::ALL {
