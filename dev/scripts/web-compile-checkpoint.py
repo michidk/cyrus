@@ -7,6 +7,7 @@ and completed build-script output are retained. No profile/cache sweep is used.
 """
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import gzip
 import importlib.util
 import json
 import os
@@ -31,17 +32,48 @@ def compiler_identity(expected):
     return {**expected, 'source': source}
 
 
+class HashingReader:
+    """Hash the exact bytes consumed by the archive, without a second copy."""
+
+    def __init__(self, source):
+        self.source = source
+        self.digest = checkpoint.hashlib.sha256()
+
+    def read(self, size):
+        block = self.source.read(size)
+        self.digest.update(block)
+        return block
+
+
+def write_archive(destination, root, entries):
+    """Stream completed files and reject a unit that changed during capture."""
+    with destination.open('wb') as output:
+        with gzip.GzipFile(fileobj=output, mode='wb', compresslevel=1) as compressed, \
+                tarfile.open(fileobj=compressed, mode='w|') as archive:
+            for name, digest in entries.items():
+                with (root / name).open('rb') as source:
+                    member = archive.gettarinfo(fileobj=source, arcname=name)
+                    if not member.isfile():
+                        raise ValueError('invalid compilation output: ' + name)
+                    reader = HashingReader(source)
+                    archive.addfile(member, reader)
+                    if reader.digest.hexdigest() != digest:
+                        raise ValueError('compilation output changed during checkpoint: ' + name)
+        output.flush()
+        os.fsync(output.fileno())
+
+
 def pack(unit):
-    """Compress only this task's completed units, preserving compiler timestamps."""
+    """Migrate an older unpacked unit without changing it if compression fails."""
     if (unit / 'files.tar.gz').exists():
         return
     with tempfile.NamedTemporaryFile(dir=unit, delete=False) as temporary:
         staged = Path(temporary.name)
     try:
-        with tarfile.open(staged, 'w:gz', compresslevel=1) as archive:
-            for path in sorted((unit / 'files').rglob('*')):
-                if path.is_file():
-                    archive.add(path, arcname=str(path.relative_to(unit / 'files')), recursive=False)
+        root = unit / 'files'
+        entries = {str(path.relative_to(root)): checkpoint.digest(path)
+                   for path in sorted(root.rglob('*')) if path.is_file() and not path.is_symlink()}
+        write_archive(staged, root, entries)
         os.replace(staged, unit / 'files.tar.gz')
         shutil.rmtree(unit / 'files')
     finally:
@@ -91,21 +123,19 @@ def retain(directory, target, event, expected):
     current_key = key + '-' + checkpoint.hashlib.sha256(json.dumps(current_entries, sort_keys=True).encode()).hexdigest()
     if (units / current_key).exists():
         return
-    with tempfile.TemporaryDirectory(dir=units) as temporary:
+    with tempfile.TemporaryDirectory(dir=units, prefix='.staging-') as temporary:
         staged = Path(temporary)
-        entries = {}
-        for path in files:
-            relative = path.relative_to(target)
-            output = staged / 'files' / relative
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, output)
-            entries[str(relative)] = checkpoint.digest(output)
-        (staged / 'record.json').write_text(json.dumps({'identity': compiler_identity(expected), 'files': entries}))
-        pack(staged)
+        # The compiler outputs are already complete. Archive them directly;
+        # staging raw files would retain a full unit beside its archive.
+        write_archive(staged / 'files.tar.gz', target, current_entries)
+        # A failed/unfinished compressor never gets a completion receipt.
+        with (staged / 'record.json').open('w') as record:
+            json.dump({'identity': compiler_identity(expected), 'files': current_entries}, record)
+            record.flush()
+            os.fsync(record.fileno())
         # A complete existing immutable unit needs no rewrite. Different bytes
         # are published under a new content identity, never over an old unit.
-        key += '-' + checkpoint.hashlib.sha256(json.dumps(entries, sort_keys=True).encode()).hexdigest()
-        destination = units / key
+        destination = units / current_key
         if not destination.exists():
             os.rename(staged, destination)
 

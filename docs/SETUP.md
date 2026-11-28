@@ -3351,6 +3351,12 @@ compilation and checkpoint recording together; restoration cannot overlap anothe
 queued Cargo build. Completed Cargo units are retained as they are
 reported, using the same hashed unit recovery as browser builds. Restoration
 never replaces existing shared compilation files; Cargo checks their freshness.
+Unit archives stream directly from completed compiler outputs without retaining
+another uncompressed copy. Capture hashes the archived bytes and rejects an output
+that changes while being read. The completion receipt is written after archive
+compression and flushing succeed, then the whole unit is published by atomic
+directory rename. Failed capture preserves previous units and live build outputs;
+interrupted staging directories are not restoration candidates.
 Before compilation, the recovery lane invalidates
 local-package fingerprint records so a shared target cannot substitute another
 checkout’s local code or embedded shaders. Compiled artifacts and dependency
@@ -3368,6 +3374,7 @@ publish a final executable checkpoint. Run the reset/recovery controls with
 Crate tests can retain completed compilation units through the same queue lane:
 set `CYRUS_NATIVE_CHECKPOINT_DIR` to a persistent host directory, then run
 `bash dev/scripts/build-native-recovery.sh --test cyrus-render [test_filter]`.
+Pass `REDGUARD_DIR=/absolute/path/to/Redguard` explicitly for install-backed tests.
 For a library-only regression, use `--test-lib PACKAGE [test_filter]` instead.
 It passes Cargo `--lib`, so unrelated integration-test executables are not compiled.
 This focused run does not replace `just verify PACKAGE` before landing a package change.

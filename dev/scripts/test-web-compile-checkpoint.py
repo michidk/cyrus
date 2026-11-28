@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check interrupted application compilation recovery without invoking Cargo."""
 import importlib.util
+import errno
 from pathlib import Path
 import tempfile
 import subprocess
@@ -8,6 +9,7 @@ import sys
 import unittest
 import threading
 from unittest.mock import patch
+from contextlib import contextmanager
 
 spec = importlib.util.spec_from_file_location('units', Path(__file__).with_name('web-compile-checkpoint.py'))
 units = importlib.util.module_from_spec(spec)
@@ -35,9 +37,139 @@ class Recovery(unittest.TestCase):
     def store(self):
         units.retain(self.cache, self.target, self.event, self.identity)
 
+    def test_checkpoint_needs_no_uncompressed_staging_copy(self):
+        with patch.object(units.shutil, 'copy2', side_effect=OSError(errno.ENOSPC, 'no room for a second copy')):
+            self.store()
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+
+    def test_failed_archive_preserves_old_receipt_and_live_outputs(self):
+        self.store()
+        records = {p: p.read_bytes() for p in (self.cache / 'units').glob('*/record.json')}
+        self.artifact.write_bytes(b'new live output')
+        original = units.tarfile.open
+
+        @contextmanager
+        def fail_at_close(*args, **kwargs):
+            with original(*args, **kwargs) as archive:
+                yield archive
+            # Model a compressor/close failure after all members were written.
+            raise OSError(errno.ENOSPC, 'archive close failed')
+
+        with patch.object(units.tarfile, 'open', side_effect=fail_at_close):
+            with self.assertRaises(OSError) as failed:
+                self.store()
+        self.assertEqual(failed.exception.errno, errno.ENOSPC)
+        self.assertEqual({p: p.read_bytes() for p in (self.cache / 'units').glob('*/record.json')}, records)
+        self.assertEqual(len(list((self.cache / 'units').iterdir())), 1)
+        self.assertEqual(self.artifact.read_bytes(), b'new live output')
+        units.restore(self.cache, self.target, self.identity)
+        self.assertEqual(self.artifact.read_bytes(), b'new live output')
+
+    def test_interrupted_archive_has_no_receipt_and_can_be_retried(self):
+        code = '''
+import importlib.util,json,os,sys
+from pathlib import Path
+spec=importlib.util.spec_from_file_location('units',sys.argv[1])
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+original=m.tarfile.TarFile.addfile
+def interrupt(archive,info,fileobj=None):
+    original(archive,info,fileobj)
+    os._exit(23)
+m.tarfile.TarFile.addfile=interrupt
+m.retain(Path(sys.argv[2]),Path(sys.argv[3]),json.loads(sys.argv[4]),json.loads(sys.argv[5]))
+'''
+        result = subprocess.run([sys.executable, '-c', code, str(Path(units.__file__)),
+                                 str(self.cache), str(self.target), units.json.dumps(self.event),
+                                 units.json.dumps(self.identity)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 23, result.stderr)
+        self.assertEqual(list((self.cache / 'units').rglob('record.json')), [])
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 0)
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+        self.store()
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+
+    def test_archive_write_failure_leaves_no_receipt_or_partial_unit(self):
+        original = units.tarfile.TarFile.addfile
+
+        def fail_after_member(archive, info, fileobj=None):
+            original(archive, info, fileobj)
+            raise OSError(errno.ENOSPC, 'archive write failed')
+
+        with patch.object(units.tarfile.TarFile, 'addfile', side_effect=fail_after_member, autospec=True):
+            with self.assertRaises(OSError) as failed:
+                self.store()
+        self.assertEqual(failed.exception.errno, errno.ENOSPC)
+        self.assertEqual(list((self.cache / 'units').iterdir()), [])
+        self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
+        self.store()
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+
+    def test_archive_or_receipt_flush_failure_preserves_previous_unit(self):
+        self.store()
+        records = {p: p.read_bytes() for p in (self.cache / 'units').glob('*/record.json')}
+        self.artifact.write_bytes(b'new live output')
+        original = units.os.fsync
+        for failing_call in (1, 2):
+            calls = 0
+
+            def fail_flush(fd):
+                nonlocal calls
+                calls += 1
+                if calls == failing_call:
+                    raise OSError(errno.ENOSPC, 'flush failed')
+                return original(fd)
+
+            with self.subTest(failing_call=failing_call), patch.object(units.os, 'fsync', side_effect=fail_flush):
+                with self.assertRaises(OSError) as failed:
+                    self.store()
+                self.assertEqual(failed.exception.errno, errno.ENOSPC)
+                self.assertEqual({p: p.read_bytes() for p in (self.cache / 'units').glob('*/record.json')}, records)
+                self.assertEqual(len(list((self.cache / 'units').iterdir())), 1)
+                self.assertEqual(self.artifact.read_bytes(), b'new live output')
+
+    def test_changed_source_is_rejected_without_reverting_live_outputs(self):
+        original = units.tarfile.TarFile.addfile
+        changed = b'x' * self.artifact.stat().st_size
+
+        def change_during_archive(archive, info, fileobj=None):
+            if info.name == str(self.artifact.relative_to(self.target)):
+                self.artifact.write_bytes(changed)
+            return original(archive, info, fileobj)
+
+        with patch.object(units.tarfile.TarFile, 'addfile', side_effect=change_during_archive, autospec=True):
+            with self.assertRaisesRegex(ValueError, 'compilation output changed during checkpoint'):
+                self.store()
+        self.assertEqual(list((self.cache / 'units').iterdir()), [])
+        self.assertEqual(self.artifact.read_bytes(), changed)
+
+    def test_failed_legacy_compression_preserves_unpacked_unit(self):
+        self.store()
+        unit = next((self.cache / 'units').iterdir())
+        with units.tarfile.open(unit / 'files.tar.gz', 'r:gz') as archive:
+            for member in archive:
+                path = unit / 'files' / member.name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.extractfile(member).read())
+        (unit / 'files.tar.gz').unlink()
+        receipt = (unit / 'record.json').read_bytes()
+        with patch.object(units.os, 'fsync', side_effect=OSError(errno.ENOSPC, 'archive flush failed')):
+            with self.assertRaises(OSError):
+                units.pack(unit)
+        self.assertEqual((unit / 'record.json').read_bytes(), receipt)
+        self.assertEqual((unit / 'files' / self.artifact.relative_to(self.target)).read_bytes(), b'completed dependency')
+        self.assertFalse((unit / 'files.tar.gz').exists())
+        units.pack(unit)
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
+
     def test_repeated_completed_unit_does_not_recompress_existing_bytes(self):
         self.store()
-        with patch.object(units, 'pack', side_effect=AssertionError('recompressed completed unit')):
+        with patch.object(units, 'write_archive', side_effect=AssertionError('recompressed completed unit')):
             self.store()
         units.shutil.rmtree(self.target)
         self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
