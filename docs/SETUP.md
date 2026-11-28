@@ -325,7 +325,18 @@ Use a source checkout or `git archive` of the same commit. Inside a compatible
 runtime, mount it at the manifest's original `workspace_root` and the extracted
 target at `target_directory`; tests embed both paths. Mount the player's install
 read-only at `<workspace_root>/redguard`, set `REDGUARD_DIR` explicitly to that
-path, and mount writable host directories at `<workspace_root>/magic` and
+path. Preserve its sibling media as read-only mounts too: GOG's `game.gog` and
+`game.ins`, or CD-edition `CDROM/` and `Soundtrack/`, plus `DOSBOX/` when present.
+The native catalog reads these beside the install. Mounting only Redguard hides
+available music, movies and splash sources. Generate the local mount plan with:
+
+```sh
+python3 dev/scripts/test_bundle.py runtime-mounts <linked-install> <workspace_root>
+```
+
+Create empty destination mountpoints in the archived source before mounting it
+read-only. Bind each planned source read-only at its destination; do not copy
+these game files into the archive or artifact. Mount writable host directories at `<workspace_root>/magic` and
 `<workspace_root>/game-config`. Set `CYRUS_CONFIG_DIR` to the latter and mount a writable host directory at
 `TMPDIR` for subprocess test logs. Do not copy
 the install into the source tree or artifact. Preserve a per-run lock and logs.

@@ -195,6 +195,29 @@ def extract(directory, manifest, destination, package=None, test=None):
         raise
 
 
+def runtime_install_mounts(install, workspace_root):
+    """Preserve the local Files catalog's install and sibling media layout.
+
+    These are read-only runtime mounts, never artifact payloads. Resolve the
+    checkout's install link before finding its sibling GOG/CD-edition media.
+    """
+    install = Path(install).resolve()
+    workspace = PurePosixPath(workspace_root)
+    if not install.is_dir():
+        raise ValueError(f'installed game directory is missing: {install}')
+    if not workspace.is_absolute() or '..' in workspace.parts:
+        raise ValueError('producer workspace must be an absolute normalized path')
+    paths = [(install, workspace / 'redguard')]
+    for name, directory in [('game.gog', False), ('game.ins', False), ('CDROM', True),
+                            ('Soundtrack', True), ('DOSBOX', True)]:
+        path = install.parent / name
+        present = path.is_dir() if directory else path.is_file()
+        if present:
+            paths.append((path.resolve(), workspace / name))
+    return [dict(source=str(source), destination=str(destination), read_only=True)
+            for source, destination in paths]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -210,7 +233,13 @@ def main():
     admission.add_argument('--extract', type=Path)
     admission.add_argument('--package')
     admission.add_argument('--test', help='extract only this admitted test path plus companions')
+    mounts = commands.add_parser('runtime-mounts', help='plan read-only local install/media mounts')
+    mounts.add_argument('install', type=Path)
+    mounts.add_argument('workspace_root')
     args = parser.parse_args()
+    if args.command == 'runtime-mounts':
+        print(json.dumps(runtime_install_mounts(args.install, args.workspace_root), indent=2))
+        return
     if args.command == 'collect':
         def git(*arguments):
             return subprocess.check_output(['git', *arguments], text=True).strip()

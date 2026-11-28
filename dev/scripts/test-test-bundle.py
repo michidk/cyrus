@@ -42,6 +42,39 @@ class BundleTests(unittest.TestCase):
     def export(self):
         return bundle.collect(self.messages, self.metadata, self.output, self.identity)
 
+    def test_runtime_mounts_preserve_read_only_sibling_media_without_copying(self):
+        installed = self.root / 'installed/Redguard'
+        installed.mkdir(parents=True)
+        (installed.parent / 'game.gog').write_bytes(b'synthetic media placeholder')
+        (installed.parent / 'game.ins').write_text('synthetic cue placeholder')
+        for name in ('CDROM', 'Soundtrack', 'DOSBOX'):
+            (installed.parent / name).mkdir()
+        before = sorted(str(path) for path in self.root.rglob('*'))
+        plan = bundle.runtime_install_mounts(installed, '/producer/source')
+        self.assertEqual(len(plan), 6)
+        self.assertEqual(plan[0], {'source': str(installed),
+                                  'destination': '/producer/source/redguard', 'read_only': True})
+        for mount in plan[1:]:
+            self.assertTrue(mount['read_only'])
+            self.assertEqual(Path(mount['source']).name, Path(mount['destination']).name)
+            self.assertEqual(Path(mount['destination']).parent, Path('/producer/source'))
+        self.assertEqual(before, sorted(str(path) for path in self.root.rglob('*')))
+
+    def test_runtime_mounts_accept_missing_optional_media_and_resolve_install_link(self):
+        installed = self.root / 'actual/Redguard'
+        installed.mkdir(parents=True)
+        link = self.root / 'redguard'
+        link.symlink_to(installed, target_is_directory=True)
+        plan = bundle.runtime_install_mounts(link, '/producer/source')
+        self.assertEqual(len(plan), 1)
+        self.assertEqual(plan[0]['source'], str(installed))
+
+    def test_runtime_mounts_reject_missing_install_and_relative_destination(self):
+        with self.assertRaises(ValueError):
+            bundle.runtime_install_mounts(self.root / 'missing', '/producer/source')
+        with self.assertRaises(ValueError):
+            bundle.runtime_install_mounts(self.root, 'relative/source')
+
     def test_roundtrip_includes_companion_and_exact_identity(self):
         manifest = self.export()
         admitted = bundle.admit(self.output, 'a' * 40, 'b' * 40, 'Linux', 'x86_64')
