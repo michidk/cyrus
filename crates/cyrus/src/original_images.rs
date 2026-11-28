@@ -11,11 +11,47 @@ use serde_json::{Value, json};
 #[derive(Resource, Default)]
 pub(crate) struct OriginalImages {
     pending: Option<Entity>,
+    source: Option<PreparedWorld>,
     pub(crate) images: Option<CapturedImages>,
     rejection: Option<String>,
 }
 
 impl OriginalImages {
+    /// Admit and read the retained image group without recapture or filesystem writes.
+    pub(crate) fn read(
+        &self,
+        state: AppState,
+        source: &PreparedWorld,
+        path: &std::path::Path,
+    ) -> anyhow::Result<Value> {
+        use anyhow::Context;
+        use rgpre::import::savegame::SaveImageKind;
+        anyhow::ensure!(state == AppState::Menu, "active book visit required");
+        anyhow::ensure!(self.pending.is_none(), "native readback pending");
+        let images = self
+            .images
+            .as_ref()
+            .context("native captured images unavailable")?;
+        anyhow::ensure!(
+            self.source.as_ref() == Some(source),
+            "prepared source changed since readback"
+        );
+        anyhow::ensure!(
+            source.world == Some(images.world()),
+            "capture world differs from prepared world"
+        );
+        let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+        let current = rgpre::import::savegame::parse_savegame_file(&bytes)
+            .with_context(|| format!("parse {}", path.display()))?;
+        let _admitted = images.admit(&current)?;
+        let (screen, thumbnail) = images.records();
+        Ok(
+            json!({"world": images.world(), "encoding": "rgb565_le", "complete_slot_export": false,
+            "screen": {"record": "SCR3", "width": SaveImageKind::Screen.width(), "height": SaveImageKind::Screen.height(), "data": screen.data},
+            "thumbnail": {"record": "THMB", "width": SaveImageKind::Thumbnail.width(), "height": SaveImageKind::Thumbnail.height(), "data": thumbnail.data}}),
+        )
+    }
+
     pub(crate) fn status(&self) -> Value {
         json!({
             "pending": self.pending.is_some(),
@@ -90,7 +126,7 @@ fn request(
         return;
     }
     *capture = OriginalImages::default();
-    let result = (|| {
+    let result = (|| -> anyhow::Result<_> {
         let prepared = source.identity()?;
         anyhow::ensure!(ending.is_none(), "ending book has no gameplay picture");
         anyhow::ensure!(
@@ -127,7 +163,7 @@ fn receive(
         return;
     }
     capture.pending = None;
-    let result = (|| {
+    let result = (|| -> anyhow::Result<_> {
         let requested = &requests.get(event.entity)?.0;
         let prepared = source.identity()?;
         anyhow::ensure!(
@@ -148,7 +184,7 @@ fn receive(
             event.image.texture_descriptor.format
         );
         let image = event.image.clone().try_into_dynamic()?.into_rgba8();
-        capture_images(
+        let images = capture_images(
             prepared
                 .world
                 .ok_or_else(|| anyhow::anyhow!("capture active world absent"))?,
@@ -160,10 +196,12 @@ fn receive(
                 height: image.height(),
                 rgba: image.as_raw(),
             }),
-        )
+        )?;
+        Ok((images, prepared.clone()))
     })();
     match result {
-        Ok(images) => {
+        Ok((images, source)) => {
+            capture.source = Some(source);
             capture.images = Some(images);
             capture.rejection = None;
         }
@@ -260,6 +298,99 @@ mod tests {
             assert_eq!(&images.records().1.data[..2], &0xf800u16.to_le_bytes());
             assert_eq!(capture.status()["complete_slot_export"], false);
         }
+    }
+
+    #[test]
+    fn retained_image_read_rejects_missing_pending_late_and_replaced_sources_before_io() {
+        let mut app = app(1);
+        let source = app.world().resource::<PreparedWorld>().clone();
+        let path = std::path::Path::new("absent-metadata/SAVEGAME.SAV");
+        let error = |app: &App, state, source: &PreparedWorld| {
+            format!(
+                "{:#}",
+                app.world()
+                    .resource::<OriginalImages>()
+                    .read(state, source, path)
+                    .unwrap_err()
+            )
+        };
+        assert!(error(&app, AppState::Menu, &source).contains("unavailable"));
+        let entity = request_frame(&mut app);
+        assert!(error(&app, AppState::Menu, &source).contains("pending"));
+        complete(&mut app, entity);
+        assert!(error(&app, AppState::InGame, &source).contains("book visit"));
+        let mut replacement = source.clone();
+        replacement.requested_name = "replacement".into();
+        assert!(error(&app, AppState::Menu, &replacement).contains("source changed"));
+        assert!(error(&app, AppState::Menu, &source).contains("read absent-metadata"));
+        assert!(app.world().resource::<OriginalImages>().images.is_some());
+        let invalid = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(invalid.path(), b"unsupported metadata").unwrap();
+        let error = app
+            .world()
+            .resource::<OriginalImages>()
+            .read(AppState::Menu, &source, invalid.path())
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("parse"));
+        assert_eq!(
+            std::fs::read(invalid.path()).unwrap(),
+            b"unsupported metadata"
+        );
+    }
+
+    #[test]
+    fn installed_metadata_admits_actual_retained_records_only_for_matching_world() {
+        let Some(install) = std::env::var_os("REDGUARD_ORIGINAL_SAVE_INSTALL") else {
+            eprintln!("SKIP retained image read: REDGUARD_ORIGINAL_SAVE_INSTALL required");
+            return;
+        };
+        assert!(
+            std::env::var_os("REDGUARD_DIR").is_some(),
+            "linked install required"
+        );
+        let mut worlds = std::collections::BTreeSet::new();
+        for entry in std::fs::read_dir(std::path::Path::new(&install).join("SAVEGAME")).unwrap() {
+            let path = entry.unwrap().path().join("SAVEGAME.SAV");
+            let bytes = std::fs::read(&path).unwrap();
+            let saved = rgpre::import::savegame::parse_savegame_file(&bytes).unwrap();
+            let world = saved.metadata.world_id;
+            if ![1, 20].contains(&world) {
+                continue;
+            }
+            let mut captured = app(world);
+            let entity = request_frame(&mut captured);
+            complete(&mut captured, entity);
+            let source = captured.world().resource::<PreparedWorld>();
+            let capture = captured.world().resource::<OriginalImages>();
+            let read = capture.read(AppState::Menu, source, &path).unwrap();
+            assert_eq!(read["world"], world);
+            assert_eq!(read["encoding"], "rgb565_le");
+            assert_eq!(read["screen"]["data"].as_array().unwrap().len(), 614400);
+            assert_eq!(read["thumbnail"]["data"].as_array().unwrap().len(), 98304);
+            assert_eq!(read["screen"]["data"][0], 0);
+            assert_eq!(read["screen"]["data"][1], 248);
+            assert_eq!(read["complete_slot_export"], false);
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+            let mut wrong = app(if world == 1 { 20 } else { 1 });
+            let entity = request_frame(&mut wrong);
+            complete(&mut wrong, entity);
+            let error = wrong
+                .world()
+                .resource::<OriginalImages>()
+                .read(
+                    AppState::Menu,
+                    wrong.world().resource::<PreparedWorld>(),
+                    &path,
+                )
+                .unwrap_err();
+            assert!(format!("{error:#}").contains("capture world"));
+            worlds.insert(world);
+        }
+        assert_eq!(
+            worlds,
+            std::collections::BTreeSet::from([1, 20]),
+            "both authentic worlds required"
+        );
     }
 
     #[test]

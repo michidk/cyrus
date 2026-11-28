@@ -17,6 +17,40 @@ pub(super) struct Inspection<'w> {
 }
 
 impl Inspection<'_> {
+    pub(super) fn saved_images(
+        &self,
+        scene: &Scene,
+        path: &str,
+    ) -> Result<serde_json::Value, String> {
+        (|| -> anyhow::Result<serde_json::Value> {
+            let source = scene
+                .prepared
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("prepared world absent"))?;
+            anyhow::ensure!(
+                scene.current.world == source.world,
+                "active and prepared worlds differ"
+            );
+            anyhow::ensure!(
+                scene
+                    .ready_scene
+                    .as_deref()
+                    .is_some_and(|ready| ready.0 == source.animations),
+                "renderer not ready"
+            );
+            self.original_images
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("native saved-image capture unavailable"))?
+                .read(*scene.state.get(), source, std::path::Path::new(path))
+        })()
+        .map_err(|error| {
+            format!(
+                "{path} world {:?} SCR3/THMB read: {error:#}",
+                scene.current.world
+            )
+        })
+    }
+
     pub(super) fn state(
         &self,
         scene: &Scene,

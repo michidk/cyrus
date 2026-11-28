@@ -114,6 +114,12 @@ impl Controls<'_, '_> {
                 &self.audio,
                 &self.acquisition,
             )),
+            CommandGroup::SavedImages => {
+                let Command::ReadSavedImages { savegame_path } = command else {
+                    unreachable!("command routed to the wrong saved-image handler")
+                };
+                Outcome::Reply(self.inspection.saved_images(&self.scene, &savegame_path))
+            }
             CommandGroup::Quit => {
                 exit.write(AppExit::Success);
                 Outcome::Reply(Ok(json!("bye")))
@@ -141,6 +147,7 @@ impl Controls<'_, '_> {
 enum CommandGroup {
     Ping,
     State,
+    SavedImages,
     Quit,
     Session,
     Audio,
@@ -154,6 +161,7 @@ impl From<&Command> for CommandGroup {
         match command {
             Command::Ping => Self::Ping,
             Command::State => Self::State,
+            Command::ReadSavedImages { .. } => Self::SavedImages,
             Command::Quit => Self::Quit,
             Command::SessionSlots { .. }
             | Command::SessionSlotsResult { .. }

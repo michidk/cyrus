@@ -34,3 +34,14 @@ fn startup_skip_has_no_world_parameter() {
         r#"{"id":8,"cmd":{"type":"skip_startup"}}"#
     );
 }
+
+#[test]
+fn saved_images_read_requires_explicit_metadata_path() {
+    let wire =
+        r#"{"id":19,"cmd":{"type":"read_saved_images","savegame_path":"/fixtures/SAVEGAME.SAV"}}"#;
+    let request: Request = serde_json::from_str(wire).unwrap();
+    assert_eq!(serde_json::to_string(&request).unwrap(), wire);
+    assert!(
+        serde_json::from_str::<Request>(r#"{"id":19,"cmd":{"type":"read_saved_images"}}"#).is_err()
+    );
+}
