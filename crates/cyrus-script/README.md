@@ -377,3 +377,11 @@ makes export explicitly unsupported rather than replacing retained values.
 It emits only the SVRG payload and performs no filesystem writes. Complete slot
 assembly, atomic publication and confirmed replacement remain tracked by Cyrus
 #419; native config-directory saves remain available.
+
+`GlobalFlagsSnapshot::export_original` encodes one SVGF record under
+`original-save-import`, using the exact installed flag schema and current signed
+values. The unlatched runtime kinds follow preservation's SOUP global-flag rules;
+latched states reject explicitly until their encoding is supported. Schema,
+version and latch validation finish before any bytes are returned, without
+changing the source snapshot. The record is not a complete slot and performs no
+filesystem writes.

@@ -144,29 +144,9 @@ fn authored_locals_export_rejects_unaligned_ranges() {
 
 #[test]
 fn installed_fresh_export_rejects_unretained_pool_storage() -> anyhow::Result<()> {
-    use anyhow::Context;
-    let Some(path) = std::env::var_os("CYRUS_ORIGINAL_SAVE") else {
-        eprintln!("skipped: supply CYRUS_ORIGINAL_SAVE for installed export");
+    let Some((_slot, scripts)) = installed_source()? else {
         return Ok(());
     };
-    let slot = rgpre::import::savegame::load_save_slot(path)?;
-    let install = cyrus_assets::install::GameInstall::locate(None)?;
-    let worlds = cyrus_assets::scene::read_worlds(&install)?;
-    let entry = worlds
-        .entries
-        .iter()
-        .find(|e| e.index == slot.game.metadata.world_id)
-        .context("saved world absent from WORLD.INI")?;
-    let filename = entry
-        .map
-        .rsplit(['\\', '/'])
-        .next()
-        .context("map name absent")?;
-    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(
-        cyrus_assets::scene::find_file(&install.root.join("maps"), filename)
-            .context("map absent")?,
-    )?)?;
-    let scripts = cyrus_assets::script_export::prepare(&map, &install.root, entry.index)?;
     let world = ScriptWorld::prepare(&scripts, 1)?;
     assert!(scripts.actors.contains_key("COMMON"));
     // Definitions alone do not provide unassigned pool words. Fresh-world export
@@ -195,4 +175,202 @@ fn authored_locals_export_rejects_ambiguous_live_pool_owners() {
         error.contains("expected one live pool owner, found 2"),
         "{error}"
     );
+}
+
+fn installed_source() -> anyhow::Result<
+    Option<(
+        rgpre::import::savegame::SaveSlot,
+        cyrus_assets::script::Scripts,
+    )>,
+> {
+    use anyhow::Context;
+    let Some(path) = std::env::var_os("CYRUS_ORIGINAL_SAVE") else {
+        eprintln!("skipped: supply CYRUS_ORIGINAL_SAVE for installed export");
+        return Ok(None);
+    };
+    let slot = rgpre::import::savegame::load_save_slot(path)?;
+    let root =
+        std::env::var_os("REDGUARD_DIR").context("installed export requires REDGUARD_DIR")?;
+    let install = cyrus_assets::install::GameInstall::locate(Some(std::path::Path::new(&root)))?;
+    let worlds = cyrus_assets::scene::read_worlds(&install)?;
+    let entry = worlds
+        .entries
+        .iter()
+        .find(|e| e.index == slot.game.metadata.world_id)
+        .context("saved world absent from WORLD.INI")?;
+    let filename = entry
+        .map
+        .rsplit(['\\', '/'])
+        .next()
+        .context("map name absent")?;
+    let map = rgpre::import::rgm::parse_rgm_file(&std::fs::read(
+        cyrus_assets::scene::find_file(&install.root.join("maps"), filename)
+            .context("map absent")?,
+    )?)?;
+    let scripts = cyrus_assets::script_export::prepare(&map, &install.root, entry.index)?;
+    Ok(Some((slot, scripts)))
+}
+
+#[test]
+fn global_flags_export_current_values_without_initializing_or_clearing_latches() {
+    use cyrus_script::script::GlobalFlagsSnapshot;
+    use rgpre::import::savegame::parse_save_flags;
+    let mut scripts = source(0);
+    scripts.definition.flags = ["BOOL", "FLIPFLOP", "COUNTER", "NUMBER"]
+        .into_iter()
+        .enumerate()
+        .map(|(index, flag_type)| cyrus_soup::program::Flag {
+            name: format!("Flag{index}"),
+            flag_type: flag_type.into(),
+            initial_value: 0,
+        })
+        .collect();
+    scripts.content_id = scripts.content_identity().unwrap();
+    let mut world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let mut value = serde_json::to_value(world.snapshot_flags()).unwrap();
+    let current = [-123, i32::MIN, i32::MAX, 17];
+    for (flag, value) in value["flags"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .zip(current)
+    {
+        flag["value"] = value.into();
+    }
+    world
+        .restore_flags(serde_json::from_value::<GlobalFlagsSnapshot>(value).unwrap())
+        .unwrap();
+    let before = serde_json::to_value(world.snapshot_flags()).unwrap();
+    let bytes = world
+        .snapshot_flags()
+        .export_original(&scripts.definition)
+        .unwrap();
+    let decoded = parse_save_flags(&bytes).unwrap();
+    assert_eq!(decoded.values, current);
+    assert_eq!(decoded.states, [0, 1, 2, 3]);
+    assert_ne!(decoded.values[0], scripts.definition.flags[0].initial_value);
+    assert_eq!(
+        serde_json::to_value(world.snapshot_flags()).unwrap(),
+        before
+    );
+}
+
+#[test]
+fn global_flags_export_rejects_latches_and_different_installed_owners() {
+    use cyrus_script::script::GlobalFlagsSnapshot;
+    let scripts = source(0);
+    let world = ScriptWorld::prepare(&scripts, 1).unwrap();
+    let snapshot = world.snapshot_flags();
+    let mut value = serde_json::to_value(&snapshot).unwrap();
+    value["flags"][0]["latched"] = true.into();
+    let latched = serde_json::from_value::<GlobalFlagsSnapshot>(value).unwrap();
+    let before = serde_json::to_value(&latched).unwrap();
+    let error = format!(
+        "{:#}",
+        latched.export_original(&scripts.definition).unwrap_err()
+    );
+    assert_eq!(serde_json::to_value(&latched).unwrap(), before);
+    assert!(
+        error.contains("SVGF") && error.contains("Counter") && error.contains("latched"),
+        "{error}"
+    );
+    let mut changed = scripts.definition.clone();
+    changed.flags[0].name = "DifferentOwner".into();
+    let error = format!("{:#}", snapshot.export_original(&changed).unwrap_err());
+    assert!(
+        error.contains("SVGF") && error.contains("installed definition"),
+        "{error}"
+    );
+    for changed in [
+        {
+            let mut changed = scripts.definition.clone();
+            changed.flags[0].flag_type = "BOOL".into();
+            assert_ne!(
+                changed.flags[0].flag_type,
+                scripts.definition.flags[0].flag_type
+            );
+            changed
+        },
+        {
+            let mut changed = scripts.definition.clone();
+            changed.flags[0].initial_value += 1;
+            changed
+        },
+    ] {
+        let before = serde_json::to_value(&snapshot).unwrap();
+        assert!(snapshot.export_original(&changed).is_err());
+        assert_eq!(serde_json::to_value(&snapshot).unwrap(), before);
+    }
+    changed.flags.clear();
+    assert!(format!("{:#}", snapshot.export_original(&changed).unwrap_err()).contains("count"));
+    let mut unsupported = serde_json::to_value(&snapshot).unwrap();
+    unsupported["version"] = 99.into();
+    let unsupported: GlobalFlagsSnapshot = serde_json::from_value(unsupported).unwrap();
+    assert!(
+        format!(
+            "{:#}",
+            unsupported
+                .export_original(&scripts.definition)
+                .unwrap_err()
+        )
+        .contains("version 99")
+    );
+    // Failed exports do not invalidate or initialize the original current snapshot.
+    assert!(snapshot.export_original(&scripts.definition).is_ok());
+}
+
+#[test]
+fn global_flags_export_installed_changed_values_roundtrip() -> anyhow::Result<()> {
+    use anyhow::Context;
+    use cyrus_script::script::GlobalFlagsSnapshot;
+    use rgpre::import::savegame::parse_save_flags;
+    let Some((slot, scripts)) = installed_source()? else {
+        return Ok(());
+    };
+    let original = &slot
+        .game
+        .sections
+        .iter()
+        .find(|s| s.name == *b"SVGF")
+        .context("installed SAVEGAME.SAV SVGF absent")?
+        .data;
+    let saved = parse_save_flags(original)?;
+    let mut world = ScriptWorld::prepare(&scripts, 1)?;
+    let mut snapshot = serde_json::to_value(world.snapshot_flags())?;
+    anyhow::ensure!(
+        saved.values.len() == snapshot["flags"].as_array().unwrap().len(),
+        "installed flag census differs"
+    );
+    for (flag, &value) in snapshot["flags"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .zip(&saved.values)
+    {
+        flag["value"] = value.into();
+    }
+    world.restore_flags(serde_json::from_value::<GlobalFlagsSnapshot>(snapshot)?)?;
+    assert_eq!(
+        world
+            .snapshot_flags()
+            .export_original(&scripts.definition)?,
+        *original
+    );
+    let mut snapshot = serde_json::to_value(world.snapshot_flags())?;
+    let changed = saved
+        .values
+        .first()
+        .context("installed flag list empty")?
+        .wrapping_add(17);
+    snapshot["flags"][0]["value"] = changed.into();
+    world.restore_flags(serde_json::from_value::<GlobalFlagsSnapshot>(snapshot)?)?;
+    let bytes = world
+        .snapshot_flags()
+        .export_original(&scripts.definition)?;
+    assert_ne!(bytes, *original);
+    let decoded = parse_save_flags(&bytes)?;
+    assert_eq!(decoded.values[0], changed);
+    assert_eq!(decoded.values[1..], saved.values[1..]);
+    assert_eq!(decoded.states, saved.states);
+    Ok(())
 }
