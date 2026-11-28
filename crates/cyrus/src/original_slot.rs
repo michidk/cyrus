@@ -1,4 +1,5 @@
 //! Complete original-slot validation and atomic native filesystem publication.
+pub mod assembly;
 pub mod request;
 
 use anyhow::{Context, Result, ensure};

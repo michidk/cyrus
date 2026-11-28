@@ -599,6 +599,7 @@ module where it is defined and regenerate.
 - `src/debug.rs` — Platform world-picker sources and navigation.
 - `src/main.rs` — Native install, persistence and control adapters with game/presentation assembly.
 - `src/original_slot.rs` — Complete original-slot validation and atomic native filesystem publication.
+- `src/original_slot/assembly.rs` — Saved-image assembly composed with mandatory complete-session inverse validation.
 - `src/original_slot/request.rs` — Application decisions for a completely validated original-slot export.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
