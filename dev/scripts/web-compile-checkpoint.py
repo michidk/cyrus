@@ -49,7 +49,7 @@ def write_archive(destination, root, entries):
     """Stream completed files and reject a unit that changed during capture."""
     with destination.open('wb') as output:
         with gzip.GzipFile(fileobj=output, mode='wb', compresslevel=1) as compressed, \
-                tarfile.open(fileobj=compressed, mode='w|') as archive:
+                tarfile.open(fileobj=compressed, mode='w|', dereference=True) as archive:
             for name, digest in entries.items():
                 with (root / name).open('rb') as source:
                     member = archive.gettarinfo(fileobj=source, arcname=name)

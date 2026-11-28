@@ -45,6 +45,19 @@ class Recovery(unittest.TestCase):
         self.assertEqual(units.restore(self.cache, self.target, self.identity), 3)
         self.assertEqual(self.artifact.read_bytes(), b'completed dependency')
 
+    def test_hardlinked_compiler_outputs_restore_as_regular_files(self):
+        alias = self.artifact.with_name('libexample-alias.rlib')
+        alias.hardlink_to(self.artifact)
+        self.event['filenames'].append(str(alias))
+        self.store()
+        archive_path = next((self.cache / 'units').glob('*/files.tar.gz'))
+        with units.tarfile.open(archive_path, 'r:gz') as archive:
+            self.assertTrue(all(member.isfile() for member in archive.getmembers()))
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 4)
+        self.assertEqual(alias.read_bytes(), b'completed dependency')
+        self.assertEqual(self.artifact.read_bytes(), alias.read_bytes())
+
     def test_failed_archive_preserves_old_receipt_and_live_outputs(self):
         self.store()
         records = {p: p.read_bytes() for p in (self.cache / 'units').glob('*/record.json')}
