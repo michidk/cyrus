@@ -3519,3 +3519,35 @@ write per-world `.TSG` state there. The runtime preparation helper replaces a
 linked maps directory with a local directory containing links to the installed
 map assets. Generated `.TSG` files stay in that runtime copy. The install remains
 read-only, and subsequent preparation preserves the run's saved world state.
+
+### Resuming installed artifact acceptance
+
+`dev/scripts/resume-artifact-digest.py` authenticates an immutable Actions ZIP
+without retaining the archive bytes. Supply an API-derived identity JSON containing
+`artifact`, `run`, `size` and `sha256`, a private file containing its current signed
+download URL, and task-owned checkpoint/result paths. It checkpoints the numeric
+OpenSSL SHA256 state after each exact HTTP range. A checkpoint is not acceptance:
+only a completed whole-archive digest match produces a result. Keep signed URLs
+and checkpoints outside tracked files. The consumer requires Linux OpenSSL's
+public SHA256 API; it fails when that API is unavailable.
+
+`dev/scripts/installed-bundle-runner.py` consumes that completed digest receipt
+and authenticates the original manifest/source provenance against explicit
+`--commit` and `--tree`. Its task directory contains `artifact-identity.json`,
+`artifact-digest.json`, `download-url.txt` and the exact source in `source/`.
+Pass the read-only install and original-save directory explicitly. Keep task
+output in storage visible to the Docker daemon; a local worktree path may cross
+a symlink into storage the daemon cannot see. The runner checks the source bind
+against its exact Cargo manifest hash before any harness launches. It records
+original-manifest and selected-projection hashes for each harness, retains raw
+hash-verified native companions/runtime libraries once, and hardlinks task-owned
+copies into a fresh read-only target mount. The runtime image is resolved to its
+immutable ID; loader receipts are reusable only for that image, manifest and raw
+hash. Each harness gets its own live lock, explicit install/config/save/TMPDIR
+mounts, loader and libtest enumeration checks, and a durable result. Result/log
+hashes and all binding inputs must still match before a completed harness is
+reused. Completed receipts are fsynced and atomically renamed, then their directory
+is fsynced before that harness's generated target is removed. Failed or skipped
+installed tests produce no accepted receipt. Package filtering is partial
+acceptance; omit `--package` for the complete exported harness census. Doctests and
+isolated mod manifests still require their separate Cargo verification receipts.
