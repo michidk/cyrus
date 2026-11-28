@@ -565,7 +565,7 @@ module where it is defined and regenerate.
 - `src/sound.rs` — Sound intents; only a playback consumer registers the message queue.
 - `src/transform.rs` — Original actor matrix arithmetic, per preservation's SOUP matrix-axis rules.
 
-## `cyrus` — Native install, persistence and control adapters with game/presentation assembly.
+## `cyrus` — Native filesystem publication boundaries, independent of game startup.
 
 - `src/audit.rs` — Headless WORLD.INI audit through the normal preload, export and script preparation paths.
 - `src/bindings.rs` — Host initialization of saved and installed player bindings.
@@ -597,6 +597,8 @@ module where it is defined and regenerate.
 - `src/control/tests/replay.rs` — Replay admission contracts.
 - `src/control/tests/script_audio.rs` — Script binding and audio command contracts.
 - `src/debug.rs` — Platform world-picker sources and navigation.
+- `src/main.rs` — Native install, persistence and control adapters with game/presentation assembly.
+- `src/original_slot.rs` — Complete original-slot validation and atomic native filesystem publication.
 - `src/preferences.rs` — Native local-state persistence, outside the read-only install.
 - `src/rendering.rs` — Native renderer configuration for software adapters.
 - `src/scene.rs` — Background native scene export; commit cache references only after preparation succeeds.
