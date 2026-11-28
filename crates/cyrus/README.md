@@ -49,6 +49,24 @@ complete native inverse mapper. Installed tests replace only image records in
 retained authentic slots and preserve all other bytes; original Load continuation
 and multi-world gameplay export remain separate acceptance requirements.
 
+`original_slot::capture::capture_images` packs an opaque encoded RGBA8 readback
+into little-endian RGB565 screen and preview records. Both sample the source
+independently using preservation's saved-image sampling rule. It rejects missing
+readback, world mismatch, malformed dimensions/byte counts, transparency and
+non-4:3 views. `CapturedImages::admit` supplies the pair to the typed assembler
+only for a matching current-world document. Native book entry shares its existing PNG
+readback with packed-image capture, freezes the prepared source,
+and rejects callbacks after source replacement or book exit. The control state's
+`original_saved_images` reports pending, captured world and rejection. Headless
+hosts explicitly report unavailable readback. Only encoded RGBA8/BGRA8 sRGB
+screenshot formats are supported; HDR/linear readbacks remain unsupported.
+This resource supplies the image group, not complete-slot export readiness;
+production menu routing still requires all other inverse mappings and the full
+validator. Native PNG thumbnails and config saves remain available. Installed
+world1/world20 tests reconstruct native readback from authentic packed screen
+words and verify lossless screen repacking and world admission. Those tests do
+not establish original Load continuation or native/original pixel parity.
+
 `original_slot::request::ExportRequest` is the application caller for a supplied
 complete-payload producer. `prepare` runs that producer once before reading the
 destination, then exposes a `Create` or `Replace` prompt without filesystem writes
