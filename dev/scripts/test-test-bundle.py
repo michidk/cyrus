@@ -100,6 +100,18 @@ class BundleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bundle.extract(self.output, manifest, self.root / 'absent', package='missing')
 
+    def test_non_test_examples_are_not_runtime_companions(self):
+        example = self.target / 'examples/large-example'
+        example.parent.mkdir()
+        example.write_bytes(b'not required by libtest')
+        example.chmod(0o755)
+        self.messages.insert(0, {'reason': 'compiler-artifact', 'package_id': 'pkg',
+                                'target': {'name': 'example', 'kind': ['example']},
+                                'profile': {'test': False}, 'executable': str(example)})
+        manifest = self.export()
+        self.assertEqual(len(manifest['files']), 2)
+        self.assertFalse(any(f['path'] == 'examples/large-example' for f in manifest['files']))
+
     def test_integration_tests_require_reported_binary_companion(self):
         self.metadata['packages'][0]['targets'].append(
             {'name': 'integration', 'kind': ['test'], 'test': True})

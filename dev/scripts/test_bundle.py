@@ -81,7 +81,9 @@ def collect(messages, metadata, destination, identity):
             found.add((package, target['name'], tuple(target['kind'])))
         if executable and not is_test and package in members:
             companions.add((package, target['name']))
-        paths = [(executable, 'test' if is_test else 'companion')] if executable and package in members else []
+        paths = [(executable, 'test' if is_test else 'companion')] if (
+            executable and package in members and (is_test or 'bin' in target['kind'])
+        ) else []
         if 'proc-macro' not in target['kind']:
             paths += [(name, 'runtime') for name in message.get('filenames', [])
                       if Path(name).suffix in {'.so', '.dylib', '.dll'}]
