@@ -1,0 +1,11 @@
+{
+  "world": 1,
+  "actors": [
+    {"index": 253, "name": "BOATSTAR", "animated": false},
+    {"index": 252, "name": "BRENNAN", "animated": true},
+    {"index": 348, "name": "GUARD01", "animated": true},
+    {"index": 382, "name": "TRITHICK", "animated": true},
+    {"index": 387, "name": "KOTARO", "animated": true},
+    {"index": 390, "name": "GUARD01", "animated": true}
+  ]
+}

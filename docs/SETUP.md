@@ -1873,6 +1873,29 @@ drain policy. This checks the browser graph, not physical speakers or original
 game audio parity. Runs own an isolated browser context and use game-clock
 progress cutoffs; a caller should also hold a per-run lock and wall-clock limit.
 
+### Arrival selection after session restore
+
+Append `{"capture_session":"arrival"}` to a local copy of
+`dev/fixtures/chapters/000-opening.replay.json`. Restore that capture through
+`session_load` in a rendered launch, capture the restored session, and collect
+one public `rendered_actor` observation for each actor in
+`dev/fixtures/arrival-session.expect.json`. Check both captures and the
+observations with:
+
+```sh
+python3 -B dev/scripts/check-arrival-session.py BEFORE.session AFTER.session \
+  dev/fixtures/arrival-session.expect.json OBSERVATION_FILES...
+python3 -B dev/scripts/test-arrival-session.py
+```
+
+Keep captures and observations local. The checker requires a replacement world
+generation of the same installed source, cached boat selection, visible actor
+bindings and settled dock animation matching the current logical frames. Frames
+may advance between capture and inspection. Static scenery has no animation
+replacement root. This checks draw eligibility and animation ownership; it does
+not prove boat pixels, camera parity or the full arrival path against the original.
+A missing boat selection or corrupted displayed frame rejects the check.
+
 ### Resumable native rendered session capture
 
 With a rendered native process exposing its public control port, capture a

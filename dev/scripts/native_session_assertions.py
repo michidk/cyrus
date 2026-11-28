@@ -85,3 +85,78 @@ def assert_dormant_preserved(before, after, world_id):
         return normalize(world)
     if normalized(before) != normalized(after):
         raise ValueError('dormant world changed before its revisit (excluding generation rebinding)')
+
+
+def assert_arrival(before, after, observations, expected):
+    """Require selected, visible arrival owners and settled post-restore dock frames.
+
+    Static scenery has no replacement animation root. Selection and saved owner
+    visibility establish its draw eligibility, not pixel visibility or frustum parity.
+    Animated observations may advance beyond the capture, but their logical and
+    displayed frames and settled mesh owner must agree at the observed update.
+    """
+    world_id = expected['world']
+    roster = expected['actors']
+    if (not roster or any(type(a['index']) is not int or a['index'] < 0
+                          or not a['name'] or type(a['animated']) is not bool for a in roster)
+            or len({a['index'] for a in roster}) != len(roster)):
+        raise ValueError('arrival expectations need distinct nonnegative actor indices, names and animation kinds')
+
+    def check(snapshot):
+        registry = snapshot['logical']['registry']
+        worlds = [w for w in registry['worlds'] if w['world'] == world_id]
+        if registry['current'] != world_id or len(worlds) != 1:
+            raise ValueError('arrival current world is absent or ambiguous')
+        world = worlds[0]
+        generation = world['generation']
+        lists = world['actor_lists']
+        if not lists or not lists['traversal_prepared']:
+            raise ValueError('arrival requires a prepared draw selection')
+        for actor in world['actors']:
+            runtime = actor.get('runtime')
+            if (actor.get('animation_failure') is not None or actor.get('update_failure') is not None
+                    or runtime and runtime['state']['failure'] is not None):
+                raise ValueError(f"arrival actor {actor['name']}: script/animation failure")
+        for want in roster:
+            index, name = want['index'], want['name']
+            actor = world['actors'][index]
+            if actor['name'] != name:
+                raise ValueError(f'{name}: installed actor identity differs')
+            if [generation, index] not in lists['selected']:
+                raise ValueError(f'{name}: absent from cached draw selection')
+            if actor['control']['hidden'] or actor['control']['invisible']:
+                raise ValueError(f'{name}: logical owner is hidden')
+            owners = [b for b in snapshot['entity_bindings'] if b['actor'] == [generation, index]]
+            if len(owners) != 1 or owners[0]['visibility'] not in (0, 2):
+                raise ValueError(f'{name}: visible bound owner absent or ambiguous')
+            if want['animated']:
+                pose = owners[0]['displayed']
+                logical = actor['model']['current']['animation']
+                if not pose or pose[1] <= 0 or pose != logical:
+                    raise ValueError(f'{name}: captured displayed frame differs from logical animation')
+        return world
+
+    original, restored = check(before), check(after)
+    if (original['generation'] == restored['generation']
+            or any(original[key] != restored[key] for key in ('content_id', 'source_identity'))):
+        raise ValueError('arrival requires a replacement generation of the same installed source')
+    for want in roster:
+        index, name = want['index'], want['name']
+        matches = [r['rendered_actor'] for r in observations
+                   if r['rendered_actor']['actor']['index'] == index]
+        if len(matches) != 1:
+            raise ValueError(f'{name}: rendered observation absent or ambiguous')
+        actor = matches[0]
+        if (actor['world'] != world_id or actor['name'] != name
+                or actor['actor']['generation'] != restored['generation']):
+            raise ValueError(f'{name}: rendered observation belongs to a different owner')
+        if want['animated']:
+            pose, model = actor['displayed_pose'], actor['model']
+            saved = restored['actors'][index]['model']['current']['animation']
+            if (not pose or pose['frame'] <= 0 or actor['logical_pose']['animation'] != pose
+                    or saved[0] != pose['model'] or not model
+                    or (model['model'], model['frame']) != (pose['model'], pose['frame'])
+                    or model['visibility'] not in (0, 2)):
+                raise ValueError(f'{name}: rendered frame owner is hidden, unsettled or differs from animation')
+    return {'world': world_id, 'actors_checked': len(roster),
+            'before_generation': original['generation'], 'after_generation': restored['generation']}
