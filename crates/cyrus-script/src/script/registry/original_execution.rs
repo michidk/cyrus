@@ -110,6 +110,7 @@ impl ScriptWorld {
             .context("original execution cleared dialogue service absent")?;
         dialogue.validate_original_load()?;
         let mut replacements = Vec::new();
+        let mut authored_receivers = Vec::new();
         let mut receivers = BTreeSet::new();
         let mut actor_owners = BTreeSet::new();
         for object in saved.actors {
@@ -155,6 +156,7 @@ impl ScriptWorld {
                 .actors
                 .get(actor.name())
                 .context("original actor definition absent")?;
+            authored_receivers.push((index, actor.name().to_owned(), object.script_local_offset()));
             let continuation = if object.script_continuation().data == 0 {
                 anyhow::ensure!(
                     object.task_slots().iter().all(|slot| slot.callback == 0),
@@ -185,6 +187,11 @@ impl ScriptWorld {
                 .context("original code allocation absent")?;
             let index = allocation.placement_index;
             anyhow::ensure!(receivers.insert(index), "duplicate original code receiver");
+            authored_receivers.push((
+                index,
+                self.actors[index].name().to_owned(),
+                owner.script_local_offset(),
+            ));
             let definition = &scripts.actors[self.actors[index].name()];
             let continuation = OriginalOwnerContinuation::decode_code(
                 owner,
@@ -354,8 +361,11 @@ impl ScriptWorld {
                 Ok((index, Some(runtime), native, commands, navigation))
             })
             .collect::<Result<Vec<_>>>()?;
-        let authored_pool = super::authored_pool::AuthoredPool::imported(scripts, saved.locals)
+        let mut authored_pool = super::authored_pool::AuthoredPool::imported(scripts, saved.locals)
             .with_context(|| format!("world {} SVRG authored pool import", self.world))?;
+        authored_pool
+            .bind_restored_receivers(authored_receivers, scripts, &self.actors)
+            .with_context(|| format!("world {} SVRG restored ownership", self.world))?;
         // Every fallible owner/service binding has completed. No callback is run.
         for actor in extra_shells {
             let index = self.actors.len();

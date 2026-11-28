@@ -548,6 +548,21 @@ fn retained_execution_population(poll_wait: bool) -> Result<()> {
             local_bytes[common_base..common_base + 4]
                 .copy_from_slice(&changed_common.to_le_bytes());
         }
+        if scripts.world == 1 && !poll_wait {
+            let definition = &scripts.actors["X"];
+            let base = definition
+                .pool_offsets
+                .context("X authored pool absent")?
+                .locals
+                .context("X local allocation absent")? as usize;
+            let original = i32::from_le_bytes(local_bytes[base..base + 4].try_into()?);
+            let changed = original.wrapping_add(27183);
+            ensure!(
+                changed != definition.instance_variables[0][0],
+                "X control must differ from installed initialization"
+            );
+            local_bytes[base..base + 4].copy_from_slice(&changed.to_le_bytes());
+        }
         let locals = parse_save_script_locals(&local_bytes)?;
         let maps = (0..animations.metadata["walk_node_maps"]
             .as_array()
@@ -652,6 +667,81 @@ fn retained_execution_population(poll_wait: bool) -> Result<()> {
                 },
             )
         };
+        if scripts.world == 1 {
+            let base = scripts.actors["X"]
+                .pool_offsets
+                .context("X authored pool absent")?
+                .locals
+                .context("X local allocation absent")? as usize;
+            let mut changed_native = encoded.clone();
+            let current = changed_native["authored_pool"]["words"][base / 4]
+                .as_i64()
+                .context("native X retained value absent")? as i32;
+            let changed = current.wrapping_sub(31415);
+            let receiver_index = changed_native["authored_pool"]["authority"]["Restored"]
+                .as_array()
+                .context("restored authority absent")?
+                .iter()
+                .find(|r| r["name"] == "X" && r["base"] == base)
+                .and_then(|r| r["index"].as_u64())
+                .context("changed X receiver absent")? as usize;
+            let variables =
+                changed_native["actors"][receiver_index]["runtime"]["state"]["variables"]
+                    .as_array_mut()
+                    .context("authentic X live VM locals absent")?;
+            ensure!(!variables.is_empty(), "authentic X live VM locals empty");
+            variables[0] = serde_json::json!(changed);
+            let native = restore(changed_native)?;
+            let mut expected = local_bytes.clone();
+            expected[base..base + 4].copy_from_slice(&changed.to_le_bytes());
+            ensure!(
+                native.export_original_authored_locals(&scripts)? == expected,
+                "changed native live X state must survive original record export without initialization substitution"
+            );
+            let mut initialization_alias = encoded.clone();
+            let receiver = initialization_alias["authored_pool"]["authority"]["Restored"]
+                .as_array_mut()
+                .context("restored authority absent")?
+                .iter_mut()
+                .find(|r| r["name"] == "X")
+                .context("restored X owner absent")?;
+            receiver["index"] = serde_json::json!(0);
+            match restore(initialization_alias) {
+                Err(_) => {}
+                Ok(candidate) => assert!(
+                    candidate.export_original_authored_locals(&scripts).is_err(),
+                    "a fresh separate execution context must not replace a restored authored owner"
+                ),
+            }
+            let mut duplicate = encoded.clone();
+            let receivers = duplicate["authored_pool"]["authority"]["Restored"]
+                .as_array_mut()
+                .context("restored authority absent")?;
+            let x = receivers
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r["name"] == "X")
+                .map(|(i, _)| i)
+                .collect::<Vec<_>>();
+            ensure!(
+                x.len() >= 2,
+                "authentic world1 must bind multiple ordinary X owners"
+            );
+            receivers[x[1]]["base"] = receivers[x[0]]["base"].clone();
+            assert!(
+                restore(duplicate).is_err(),
+                "two actual restored receivers must not own one authored range"
+            );
+        }
+        let mut missing_receiver = encoded.clone();
+        missing_receiver["authored_pool"]["authority"]["Restored"]
+            .as_array_mut()
+            .context("restored authority absent")?
+            .pop();
+        assert!(
+            restore(missing_receiver).is_err(),
+            "missing restored storage binding must reject"
+        );
         let mut wrong_range = encoded.clone();
         let base = wrong_range["authored_pool"]["owners"][0]["base"]
             .as_u64()

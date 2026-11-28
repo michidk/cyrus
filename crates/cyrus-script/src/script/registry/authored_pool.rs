@@ -12,12 +12,29 @@ struct Owner {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+struct Receiver {
+    index: usize,
+    name: String,
+    base: u32,
+    runtime_identifier: Option<i16>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+enum RuntimeAuthority {
+    Initialized,
+    Restored(Vec<Receiver>),
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub(super) struct AuthoredPool {
     world: u32,
     content_id: String,
     owners: Vec<Owner>,
     words: Vec<Option<i32>>,
     word_count: usize,
+    authority: RuntimeAuthority,
+    receiver_count: usize,
+    unbound_writer: Option<String>,
 }
 
 impl AuthoredPool {
@@ -96,6 +113,9 @@ impl AuthoredPool {
             world: scripts.world,
             content_id: scripts.content_id.clone(),
             word_count: words.len(),
+            authority: RuntimeAuthority::Initialized,
+            unbound_writer: None,
+            receiver_count: 0,
             owners,
             words,
         })
@@ -117,10 +137,54 @@ impl AuthoredPool {
                     .is_some_and(|end| end <= self.word_count)),
             "authored pool retained word count differs"
         );
+        if let RuntimeAuthority::Restored(receivers) = &self.authority {
+            ensure!(
+                receivers.len() == self.receiver_count,
+                "restored authored receiver census differs"
+            );
+            let mut indices = std::collections::BTreeSet::new();
+            let mut ranges = std::collections::BTreeSet::new();
+            for receiver in receivers {
+                ensure!(
+                    indices.insert(receiver.index)
+                        && ranges.insert((&receiver.name, receiver.base)),
+                    "duplicate restored authored pool owner"
+                );
+                ensure!(
+                    self.owners
+                        .iter()
+                        .any(|o| o.name == receiver.name && o.base == receiver.base),
+                    "restored authored receiver range differs"
+                );
+            }
+        }
         Ok(())
     }
 
-    pub(super) fn refresh(&mut self, name: &str, base: u32, variables: &[cyrus_soup::ScriptValue]) {
+    pub(super) fn refresh(
+        &mut self,
+        index: usize,
+        name: &str,
+        base: u32,
+        variables: &[cyrus_soup::ScriptValue],
+    ) {
+        let base = match &self.authority {
+            RuntimeAuthority::Initialized => base,
+            RuntimeAuthority::Restored(receivers) => {
+                let Some(receiver) = receivers
+                    .iter()
+                    .find(|r| r.index == index && r.name == name)
+                else {
+                    if !variables.is_empty() {
+                        self.unbound_writer = Some(format!(
+                            "actor {name} receiver {index}: execution lacks restored authored storage binding"
+                        ));
+                    }
+                    return;
+                };
+                receiver.base
+            }
+        };
         let Some(owner) = self.owners.iter().find(|owner| {
             owner.name == name && owner.base == base && owner.count == variables.len()
         }) else {
@@ -158,9 +222,47 @@ impl AuthoredPool {
             world: scripts.world,
             content_id: scripts.content_id.clone(),
             word_count: words.len(),
+            authority: RuntimeAuthority::Restored(Vec::new()),
+            unbound_writer: None,
+            receiver_count: 0,
             owners,
             words,
         })
+    }
+
+    #[cfg(feature = "original-save-import")]
+    pub(super) fn bind_restored_receivers(
+        &mut self,
+        bindings: Vec<(usize, String, Option<u32>)>,
+        scripts: &Scripts,
+        actors: &[super::ScriptActor],
+    ) -> Result<()> {
+        let mut receivers = Vec::new();
+        let mut ranges = std::collections::BTreeSet::new();
+        for (index, name, base) in bindings {
+            if scripts.actors[&name].program.variables.is_empty() {
+                continue;
+            }
+            let base =
+                base.with_context(|| format!("actor {name}: restored local allocation missing"))?;
+            ensure!(
+                self.owners.iter().any(|o| o.name == name && o.base == base),
+                "actor {name}: restored authored range differs"
+            );
+            ensure!(
+                ranges.insert((name.clone(), base)),
+                "actor {name}: duplicate restored authored pool owner"
+            );
+            receivers.push(Receiver {
+                index,
+                name,
+                base,
+                runtime_identifier: actors[index].runtime_identifier,
+            });
+        }
+        self.receiver_count = receivers.len();
+        self.authority = RuntimeAuthority::Restored(receivers);
+        Ok(())
     }
 
     #[cfg(feature = "original-save-import")]
@@ -170,6 +272,31 @@ impl AuthoredPool {
         scripts: &Scripts,
     ) -> Result<Vec<i32>> {
         self.validate(scripts)?;
+        ensure!(
+            self.unbound_writer.is_none(),
+            "{}",
+            self.unbound_writer.as_deref().unwrap_or_default()
+        );
+        if let RuntimeAuthority::Restored(receivers) = &self.authority {
+            for receiver in receivers {
+                ensure!(
+                    world.actors.get(receiver.index).is_some_and(|actor| {
+                        actor.name() == receiver.name
+                            && actor.runtime_identifier == receiver.runtime_identifier
+                            && match receiver.runtime_identifier {
+                                Some(_) => !actor
+                                    .placement()
+                                    .is_some_and(|p| p.object_type.has_separate_record()),
+                                None => actor.placement().is_some_and(|p| {
+                                    p.object_type
+                                        == cyrus_assets::script::PlacementType::SCRIPT_ONLY
+                                }),
+                            }
+                    }),
+                    "restored authored receiver identity differs"
+                );
+            }
+        }
         let mut words = self
             .words
             .iter()
@@ -184,12 +311,19 @@ impl AuthoredPool {
             let receivers: Vec<_> = world
                 .actors
                 .iter()
-                .filter(|actor| {
-                    actor.name() == owner.name
-                        && actor
-                            .pool_offsets
-                            .is_some_and(|p| p.locals == Some(owner.base))
+                .enumerate()
+                .filter(|(index, actor)| {
+                    let bound = match &self.authority {
+                        RuntimeAuthority::Initialized => {
+                            actor.pool_offsets.and_then(|p| p.locals) == Some(owner.base)
+                        }
+                        RuntimeAuthority::Restored(receivers) => receivers.iter().any(|r| {
+                            r.index == *index && r.name == owner.name && r.base == owner.base
+                        }),
+                    };
+                    bound && actor.name() == owner.name
                 })
+                .map(|(_, actor)| actor)
                 .collect();
             ensure!(
                 receivers.len() <= 1,
@@ -199,6 +333,11 @@ impl AuthoredPool {
                 receivers.len()
             );
             if let Some(actor) = receivers.first() {
+                if actor.runtime.is_none()
+                    && matches!(self.authority, RuntimeAuthority::Restored(_))
+                {
+                    continue;
+                }
                 let runtime = actor
                     .runtime
                     .as_ref()
@@ -229,6 +368,54 @@ mod tests {
     use cyrus_soup::{ActorReference, ScriptValue};
 
     #[test]
+    fn restored_contexts_cannot_redirect_retained_word_writes() {
+        let mut pool = AuthoredPool {
+            world: 7,
+            content_id: "fixture".into(),
+            owners: vec![Owner {
+                name: "LOGIC".into(),
+                instance: 0,
+                base: 0,
+                count: 1,
+            }],
+            words: vec![Some(-17)],
+            word_count: 1,
+            authority: RuntimeAuthority::Restored(vec![Receiver {
+                index: 4,
+                name: "LOGIC".into(),
+                base: 0,
+                runtime_identifier: Some(9),
+            }]),
+            receiver_count: 1,
+            unbound_writer: None,
+        };
+        let mut unknown = pool.clone();
+        unknown.refresh(0, "LOGIC", 0, &[ScriptValue::Integer(999)]);
+        assert_eq!(
+            unknown.words,
+            [Some(-17)],
+            "an initialization alias must not replace retained saved values"
+        );
+        assert!(
+            unknown.unbound_writer.is_some(),
+            "unbound execution must make export unsupported"
+        );
+        let restored: AuthoredPool =
+            serde_json::from_slice(&serde_json::to_vec(&unknown).unwrap()).unwrap();
+        assert!(
+            restored.unbound_writer.is_some(),
+            "snapshot restore must not clear unsupported writes"
+        );
+        pool.refresh(4, "LOGIC", 16, &[ScriptValue::Integer(23)]);
+        assert_eq!(
+            pool.words,
+            [Some(23)],
+            "restored receiver uses its retained binding rather than a fresh allocation offset"
+        );
+        assert!(pool.unbound_writer.is_none());
+    }
+
+    #[test]
     fn completed_receiver_writes_retain_values_without_creating_owners() {
         let mut pool = AuthoredPool {
             world: 7,
@@ -241,21 +428,25 @@ mod tests {
             }],
             words: vec![Some(4)],
             word_count: 1,
+            authority: RuntimeAuthority::Initialized,
+            unbound_writer: None,
+            receiver_count: 0,
         };
-        pool.refresh("OTHER", 0, &[ScriptValue::Integer(99)]);
-        pool.refresh("LOGIC", 4, &[ScriptValue::Integer(99)]);
-        pool.refresh("LOGIC", 0, &[]);
+        pool.refresh(0, "OTHER", 0, &[ScriptValue::Integer(99)]);
+        pool.refresh(0, "LOGIC", 4, &[ScriptValue::Integer(99)]);
+        pool.refresh(0, "LOGIC", 0, &[]);
         assert_eq!(
             pool.words,
             [Some(4)],
             "name/range/count mismatches must not redirect storage"
         );
-        pool.refresh("LOGIC", 0, &[ScriptValue::Integer(-123)]);
+        pool.refresh(0, "LOGIC", 0, &[ScriptValue::Integer(-123)]);
         let restored: AuthoredPool =
             serde_json::from_slice(&serde_json::to_vec(&pool).unwrap()).unwrap();
         assert_eq!(restored.words, [Some(-123)]);
         assert_eq!(restored.owners, pool.owners);
         pool.refresh(
+            0,
             "LOGIC",
             0,
             &[ScriptValue::Actor(ActorReference {
