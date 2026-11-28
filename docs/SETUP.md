@@ -296,6 +296,54 @@ install. Its success does not replace explicit `REDGUARD_DIR` verification again
 the linked install; installed-data checks must still complete locally, without
 no-install skips, before the candidate is delivered to main.
 
+The `workspace-tests-linux` artifact exports the workspace's
+`cargo test --locked --workspace --all-features --no-run` executables, non-test
+binary companions and Cargo-reported runtime libraries. The collector requires
+successful, complete Cargo output. It compresses files individually and publishes
+the manifest only after all payloads have been written. Failed exports leave
+existing bundles and build outputs untouched. The manifest records each file's
+SHA256, size, mode, package, target and features, the original workspace/target
+paths, host OS/architecture/libc, runner image, Rust compiler, ELF loader requirements
+and exact commit/tree/run. Its own hash is bound
+by `source-provenance.json`. Neither bundle contains the install.
+
+Authenticate the downloaded Actions artifact digest and source provenance before
+admission. Then verify all payloads and extract one package's tests, keeping the
+shared companions, with:
+
+```sh
+python3 dev/scripts/test_bundle.py admit <bundle-directory> <commit> <tree> \
+  --extract <fresh-target-directory> --package cyrus
+```
+
+Add `--test <manifest-test-path>` to extract one test executable at a time while
+retaining companions and runtime libraries. This avoids unpacking every large
+workspace executable together. Remove only that run's extracted files after its
+result has been recorded; retain the authenticated compressed bundle.
+
+Use a source checkout or `git archive` of the same commit. Inside a compatible
+runtime, mount it at the manifest's original `workspace_root` and the extracted
+target at `target_directory`; tests embed both paths. Mount the player's install
+read-only at `<workspace_root>/redguard`, set `REDGUARD_DIR` explicitly to that
+path, and mount writable host directories at `<workspace_root>/magic` and
+`<workspace_root>/game-config`. Set `CYRUS_CONFIG_DIR` to the latter and mount a writable host directory at
+`TMPDIR` for subprocess test logs. Do not copy
+the install into the source tree or artifact. Preserve a per-run lock and logs.
+
+OS/architecture admission alone does not prove runtime compatibility. Before
+accepting tests, check every extracted ELF executable/library with the selected
+runtime's dynamic loader for missing libraries or symbol versions, then run each
+test executable with `--list`. Hosted Ubuntu binaries may require a newer libc
+than the pod. Use the pinned Ubuntu runtime from `dev/docker/dev/Dockerfile` with
+its required system libraries when needed. Run each admitted test executable
+with `--nocapture` and `RUST_MIN_STACK=8388608`, recording the exact artifact,
+package, executable, exit status and output. Reject `skipped: no install` output;
+public no-install success never establishes installed-data acceptance. Tests
+requiring original save slots still need explicit local slot inputs. Exported
+libtest executables do not cover doctests, lint/browser checks or isolated mod
+manifests; retain those separate gate results. Do not infer whole-workspace
+acceptance from a package-filtered run.
+
 Fetch an uploaded standard Linux executable from a specific PR workflow run with
 its full head SHA, without a local build:
 

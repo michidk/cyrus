@@ -54,6 +54,10 @@ class CandidateTests(unittest.TestCase):
                         'cargo check -p cyrus-web -p cyrus-viewer -p cyrus-assets-worker --target wasm32-unknown-unknown'):
             self.assertIn(command, workflow)
         self.assertIn('--file original-runtime-test', workflow)
+        self.assertIn('cargo test --locked --workspace --all-features --no-run --message-format=json', workflow)
+        self.assertIn('collect-test-executable.py --bundle collect', workflow)
+        self.assertIn('--file manifest.json', workflow)
+        self.assertIn('name: workspace-tests-linux', workflow)
         self.assertIn('artifact_provenance.py', workflow)
         self.assertNotIn('secrets.', workflow)
 

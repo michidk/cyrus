@@ -31,6 +31,11 @@ def collect(messages, target, destination):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == '--bundle':
+        from test_bundle import main
+        del sys.argv[1]
+        main()
+        raise SystemExit(0)
     if len(sys.argv) != 4:
         raise SystemExit("usage: collect-test-executable.py MESSAGES TARGET DESTINATION")
     with Path(sys.argv[1]).open() as messages:
