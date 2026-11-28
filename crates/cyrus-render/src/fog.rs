@@ -18,7 +18,7 @@ pub use preparation::{
 };
 #[cfg(feature = "raytracing")]
 pub use ray_tracing::RayTracingPlugin;
-pub use ray_tracing::{RayTracing, RayTracingReference, RayTracingSupport, ray_traced};
+pub use ray_tracing::{RayTracing, RayTracingSupport, ray_traced};
 pub use texture::{
     EffectDraw, EffectDrawView, TextureAnimations, TextureFrame, TexturePlaybackSnapshot,
     TextureSourcesSnapshot,

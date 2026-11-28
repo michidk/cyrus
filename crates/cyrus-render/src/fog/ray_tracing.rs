@@ -51,13 +51,6 @@ impl Default for RayTracing {
     }
 }
 
-/// Replaces the real-time ray-traced lighting with Solari's path tracer, which accumulates a
-/// converged reference image while the camera stays still. A development aid for judging the
-/// real-time lighting and its denoiser; it has no effect unless Solari lights the scene. Present
-/// only where `RayTracingPlugin` is.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct RayTracingReference(pub bool);
-
 /// A world mesh's traced stand-in. It has no parent, so scene preparation ignores it.
 #[derive(Component)]
 pub(crate) struct StandIn;

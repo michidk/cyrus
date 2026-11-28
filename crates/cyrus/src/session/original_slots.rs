@@ -44,6 +44,14 @@ pub(super) fn list(install: &Path) -> Result<Vec<SaveSlot>> {
             "original save slot {}: expected a directory",
             entry.path().display()
         );
+        // A slot folder without its save file holds no save: skip it like an unused slot.
+        let has_save = std::fs::read_dir(entry.path())?
+            .collect::<std::io::Result<Vec<_>>>()?
+            .iter()
+            .any(|file| file.file_name().eq_ignore_ascii_case("SAVEGAME.SAV"));
+        if !has_save {
+            continue;
+        }
         let saved = rgpre::import::savegame::load_save_slot(entry.path())
             .with_context(|| format!("original save slot {slot} {}", entry.path().display()))?;
         slots.push(SaveSlot {
@@ -233,6 +241,17 @@ mod tests {
             std::fs::read(install.0.join("savegame/SAVEGAME.002/SAVEGAME.SAV")).unwrap(),
             before
         );
+    }
+
+    #[test]
+    fn slot_folder_without_save_file_is_skipped() {
+        let install = Install::new();
+        install.slot(2, 15);
+        let empty = install.0.join("savegame/SAVEGAME.000");
+        std::fs::create_dir_all(&empty).unwrap();
+        std::fs::write(empty.join("LOGBOOK.TXT"), b"leftover").unwrap();
+        let slots = list(&install.0).unwrap();
+        assert_eq!(slots.iter().map(|s| s.slot).collect::<Vec<_>>(), [2]);
     }
 
     #[test]

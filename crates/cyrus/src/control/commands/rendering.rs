@@ -8,7 +8,6 @@ pub(super) struct Rendering<'w, 's> {
     pub(super) day_night: Option<ResMut<'w, cyrus_render::fog::DayNight>>,
     pub(super) modern_effects: Option<ResMut<'w, cyrus_render::fog::ModernEffects>>,
     pub(super) flycam: Option<ResMut<'w, cyrus_render::camera::DetachedView>>,
-    pub(super) reference: Option<ResMut<'w, cyrus_render::fog::RayTracingReference>>,
     pub(super) ray_tracing: Option<ResMut<'w, cyrus_render::fog::RayTracing>>,
     pub(super) camera: Query<
         'w,
@@ -32,7 +31,6 @@ impl Rendering<'_, '_> {
             command @ Command::Teleport { .. } => self.teleport(command),
             command @ Command::Flycam { .. } => self.flycam(command),
             command @ Command::RayTracing { .. } => self.ray_tracing(command),
-            command @ Command::RayTracingReference { .. } => self.ray_tracing_reference(command),
             command @ Command::SetFidelity { .. } => self.set_fidelity(command),
             command @ Command::SetDayNight { .. } => self.set_day_night(command),
             command @ Command::SetModernEffect { .. } => self.set_modern_effect(command),
@@ -119,20 +117,6 @@ impl Rendering<'_, '_> {
                 None => Err("this build has no ray tracing (cargo feature `raytracing`)".into()),
             },
             _ => unreachable!("command routed to the wrong ray_tracing handler"),
-        })
-    }
-
-    fn ray_tracing_reference(&mut self, command: Command) -> Outcome {
-        let Self { reference, .. } = self;
-        Outcome::Reply(match command {
-            Command::RayTracingReference { enabled } => match reference.as_mut() {
-                Some(reference) => {
-                    reference.0 = enabled;
-                    Ok(json!({"enabled": enabled}))
-                }
-                None => Err("no renderer is running".into()),
-            },
-            _ => unreachable!("command routed to the wrong ray_tracing_reference handler"),
         })
     }
 

@@ -119,30 +119,45 @@ done
         self.assertFalse((self.root / f"target/artifacts/cyrus-viewer-{windows}.zip").exists())
 
     def test_raytracing_packages_preserve_standard_downloads(self):
-        for target, extension in (("x86_64-unknown-linux-gnu", ".tar.gz"),
-                                  ("x86_64-pc-windows-msvc", ".zip")):
+        self.mod_fixtures()
+        launcher = self.root / "crates/cyrus-launcher"
+        launcher.mkdir()
+        (launcher / "Cargo.toml").touch()
+        for target, suffix, extension in (("x86_64-unknown-linux-gnu", "", ".tar.gz"),
+                                          ("x86_64-pc-windows-msvc", ".exe", ".zip")):
             with self.subTest(target=target):
                 (self.root / "crates/cyrus-viewer/Cargo.toml").touch()
-                self.build("native", target)
-                standard = self.root / f"target/artifacts/cyrus-{target}{extension}"
-                viewer = self.root / f"target/artifacts/cyrus-viewer-{target}{extension}"
-                originals = (standard.read_bytes(), viewer.read_bytes())
+                self.build("native-mods", target)
+                artifacts = self.root / "target/artifacts"
+                standard = {path.name: path.read_bytes() for path in artifacts.iterdir() if path.is_file()}
                 self.build("native-raytracing", target)
-                self.assertEqual((standard.read_bytes(), viewer.read_bytes()), originals)
-                package = self.root / f"target/artifacts/cyrus-raytracing-{target}{extension}"
+                after = {path.name: path.read_bytes() for path in artifacts.iterdir() if path.is_file()}
+                package = f"cyrus-raytracing-{target}{extension}"
+                self.assertIsNotNone(after.pop(package, None))
+                self.assertEqual(after, standard)
+                # The ray-traced download is the same complete bundle as the standard one.
                 if extension == ".zip":
-                    with zipfile.ZipFile(package) as archive:
-                        self.assertEqual(archive.namelist(), ["cyrus.exe"])
+                    with zipfile.ZipFile(artifacts / package) as archive:
+                        files = {n for n in archive.namelist() if not n.endswith("/")}
                         self.assertEqual(archive.getinfo("cyrus.exe").compress_type,
                                          zipfile.ZIP_DEFLATED)
+                    with zipfile.ZipFile(artifacts / f"cyrus-with-mods-{target}{extension}") as archive:
+                        standard_files = {n for n in archive.namelist() if not n.endswith("/")}
                 else:
-                    self.assertEqual(self.members(package.name), {"cyrus"})
-                command = (self.root / "cargo-calls.txt").read_text().splitlines()[-1]
+                    files = {name.removeprefix("./") for name in self.members(package)}
+                    standard_files = {name.removeprefix("./") for name in
+                                      self.members(f"cyrus-with-mods-{target}{extension}")}
+                self.assertEqual(files, standard_files)
+                self.assertIn(f"cyrus-launcher{suffix}", files)
+                self.assertIn("README.txt", files)
+                command = [call for call in (self.root / "cargo-calls.txt").read_text().splitlines()
+                           if call.startswith(f"build --locked --release --target {target} ")][-1]
                 self.assertIn("--features cyrus/raytracing", command)
                 self.assertNotIn("cyrus-viewer", command)
-                self.assertNotIn("cyrus-launcher", command)
+                self.assertIn("-p cyrus-launcher", command)
 
     def test_raytracing_failure_removes_stale_download(self):
+        self.mod_fixtures()
         target = "x86_64-unknown-linux-gnu"
         self.build("native-raytracing", target)
         (self.root / "bin/cargo").write_text("#!/bin/bash\nexit 7\n")

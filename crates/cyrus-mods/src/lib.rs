@@ -690,7 +690,7 @@ fn window(
     window.show(contexts.ctx_mut()?, |ui| {
         if catalog.entries.is_empty() && catalog.problems.is_empty() {
             ui.label(format!(
-                "No mods in {}. `just mods` installs the bundled ones.",
+                "No mods installed. Mods go in {}, one folder each.",
                 mods_dir().display()
             ));
         }

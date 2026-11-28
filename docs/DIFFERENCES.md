@@ -195,10 +195,7 @@ accumulates the light over time against the previous frame's depth and normals, 
 edge-stopping a-trous passes and multiplies the albedo back in. It works on any ray-query GPU and needs
 no NVIDIA SDK, but it treats all light as diffuse. History is dropped on camera jumps and world changes.
 The vendored copy also fixes a compaction queue that prepared a replaced mesh twice. On an RTX 4070 at
-1600x900 in ISLAND the denoiser cuts the mean frame-to-frame luminance change from about 2.4 to 0.3. The
-debug menu's **Path-traced reference** switch (control `ray_tracing_reference`) replaces the real-time
-lighting with Solari's path tracer, which converges while the camera is still, as a reference for judging
-the real-time image; it draws over sky, water and flats.
+1600x900 in ISLAND the denoiser cuts the mean frame-to-frame luminance change from about 2.4 to 0.3.
 
 ## Credits scroll pace
 

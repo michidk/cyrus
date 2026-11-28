@@ -33,7 +33,7 @@ reference for its fields. Command groups:
 | Session | `ping`, `state`, `skip_startup`, `load_scene {name}`, `quit` |
 | Input and camera | `input {key, action}` (Bevy `KeyCode` names; `press`, `release`, `tap`), `schedule_input`, `acquire_input`, `flycam`, `teleport`, `reset_camera` |
 | Capture | `screenshot {path}`, `capture_presentation_frame {path}`, `capture_gameplay_frame {path, pcm_path?, boundary?}` |
-| Fidelity and rendering | `set_fidelity {area, mode}`, `ray_tracing`, `ray_tracing_reference`, `set_day_night`, `set_modern_effect`, `set_sky_scroll`, `hold_texture_frame` |
+| Fidelity and rendering | `set_fidelity {area, mode}`, `ray_tracing`, `set_day_night`, `set_modern_effect`, `set_sky_scroll`, `hold_texture_frame` |
 | Audio and movies | `play_sound {effect, position?}`, `play_speech {label}`, `stop_sounds`, `queue_movie {movie}` |
 | Gameplay setup | `place_player`, `trace_player`, `set_attribute`, `mark_dead`, `select_item`, `show_item`, `set_torch`, `cheat {name, value?}`, `console {open?, line?}`, `script_load_world` |
 | Saves | `session_capture`, `session_load`, `session_slots` and their `*_result` polls |
