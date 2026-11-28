@@ -202,6 +202,36 @@ def require_installed_output(output):
         raise ValueError(f"installed test skipped required input: {skipped.group()}")
 
 
+def admit_installed_receipt(receipt, manifest, entry, manifest_sha256, runtime_image):
+    """Recheck a cached result against an authenticated manifest and pinned runtime.
+
+    This establishes acceptance of the manifest's source only. It does not extend
+    that acceptance to changed sources in a later delivery tree.
+    """
+    expected = dict(commit=manifest['identity']['commit'], tree=manifest['identity']['tree'],
+                    original_manifest_sha256=manifest_sha256, sha256=entry['sha256'],
+                    image=runtime_image)
+    if entry not in manifest['files'] or entry['role'] != 'test':
+        raise ValueError('installed receipt test is absent from the authenticated manifest')
+    if receipt.get('accepted') is not True or any(receipt.get(key) != value
+                                                for key, value in expected.items()):
+        raise ValueError('installed receipt source, harness or runtime identity does not match')
+    for phase in ('loader', 'list', 'tests'):
+        result = receipt.get(phase, {})
+        if result.get('exit') != 0:
+            raise ValueError(f'installed receipt lacks a successful {phase} result')
+        try:
+            output = Path(result['log']).read_text(errors='replace')
+        except (KeyError, TypeError, OSError) as error:
+            raise ValueError(f'installed receipt {phase} log is unavailable') from error
+        require_installed_output(output)
+        if phase == 'loader' and 'not found' in output:
+            raise ValueError('installed receipt loader reported a missing library')
+        if phase == 'tests' and not re.search(r'^test result: ok\. \d+ passed; 0 failed;',
+                                             output, re.MULTILINE):
+            raise ValueError('installed receipt lacks a successful libtest summary')
+
+
 def runtime_install_mounts(install, workspace_root):
     """Preserve the local Files catalog's install and sibling media layout.
 

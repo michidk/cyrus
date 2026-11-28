@@ -3,6 +3,7 @@
 import gzip
 import importlib.util
 import json
+import copy
 from pathlib import Path
 import tempfile
 import unittest
@@ -85,6 +86,50 @@ class BundleTests(unittest.TestCase):
             with self.subTest(output=output), self.assertRaisesRegex(ValueError, "skipped"):
                 bundle.require_installed_output(output)
         bundle.require_installed_output("test skip_startup_preserves_controls ... ok\n1 passed")
+
+    def test_installed_receipt_reuse_rechecks_source_runtime_and_output(self):
+        manifest = self.export()
+        entry = next(f for f in manifest['files'] if f['role'] == 'test')
+        log = self.root / 'installed.log'
+        log.write_text('test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.1s\n')
+        receipt = dict(accepted=True, commit=self.identity['commit'], tree=self.identity['tree'],
+                       original_manifest_sha256='c' * 64, sha256=entry['sha256'],
+                       image='runtime@sha256:fixed',
+                       **{phase: dict(exit=0, log=str(log)) for phase in ('loader', 'list', 'tests')})
+        def admit(value):
+            bundle.admit_installed_receipt(
+                value, manifest, entry, 'c' * 64, 'runtime@sha256:fixed')
+        admit(receipt)
+        for key, value in [('accepted', False), ('commit', 'd' * 40), ('tree', 'd' * 40),
+                           ('sha256', 'd' * 64), ('original_manifest_sha256', 'd' * 64),
+                           ('image', 'different-runtime')]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                admit(dict(receipt, **{key: value}))
+        for phase in ('loader', 'list', 'tests'):
+            changed = copy.deepcopy(receipt)
+            changed[phase]['exit'] = 1
+            with self.subTest(phase=phase), self.assertRaises(ValueError):
+                admit(changed)
+        with self.assertRaisesRegex(ValueError, 'manifest'):
+            bundle.admit_installed_receipt(receipt, manifest, dict(entry, target='foreign'),
+                                           'c' * 64, 'runtime@sha256:fixed')
+        missing_phase = dict(receipt)
+        del missing_phase['list']
+        with self.assertRaises(ValueError):
+            admit(missing_phase)
+        log.write_text('libcompanion.so => not found\n')
+        with self.assertRaisesRegex(ValueError, 'missing library'):
+            admit(receipt)
+        log.write_text('skipped: no original save supplied with CYRUS_ORIGINAL_SAVE\n'
+                       'test result: ok. 1 passed; 0 failed;\n')
+        with self.assertRaisesRegex(ValueError, 'skipped'):
+            admit(receipt)
+        log.write_text('running 1 test\n')
+        with self.assertRaisesRegex(ValueError, 'summary'):
+            admit(receipt)
+        log.unlink()
+        with self.assertRaises(ValueError):
+            admit(receipt)
 
     def test_roundtrip_includes_companion_and_exact_identity(self):
         manifest = self.export()

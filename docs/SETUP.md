@@ -353,7 +353,13 @@ package, executable, exit status and output. Validate each output with
 This rejects missing-install and missing-fixture skips, including original-save
 and edition-specific inputs. Supply those inputs before accepting that harness;
 public no-install success never establishes installed-data acceptance. Tests
-requiring original save slots still need explicit local slot inputs. Exported
+requiring original save slots still need explicit local slot inputs. Reuse of a cached
+installed receipt must go through `test_bundle.admit_installed_receipt` with the
+authenticated manifest, original manifest digest, selected entry and pinned runtime
+image. It rechecks source/harness/runtime identity, successful phase exits and
+retained logs, including the missing-fixture skip rule. A receipt accepts only its
+recorded artifact source; a later tree with native source or manifest changes
+needs source-bound verification of those changes. Exported
 libtest executables do not cover doctests, lint/browser checks or isolated mod
 manifests; retain those separate gate results. Do not infer whole-workspace
 acceptance from a package-filtered run.
