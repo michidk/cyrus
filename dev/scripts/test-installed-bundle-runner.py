@@ -130,6 +130,7 @@ class Tests(unittest.TestCase):
 
     def test_expired_capability_refresh_preserves_exact_range_and_cached_reads(self):
         response=unittest.mock.MagicMock(status=206,headers={'Content-Range':'bytes 0-3/4'})
+        response.__enter__.return_value=response
         response.read.return_value=b'abcd'
         expired=m.urllib.error.HTTPError('https://expired',403,'expired',None,None)
         refresh=unittest.mock.Mock(return_value='https://renewed')
@@ -140,6 +141,39 @@ class Tests(unittest.TestCase):
         with patch.object(m.urllib.request,'urlopen',side_effect=m.urllib.error.HTTPError('https://missing',404,'missing',None,None)):
             with self.assertRaises(m.urllib.error.HTTPError):m.RemoteZip('https://missing',4,refresh).read(2)
         refresh.assert_called_once()
+
+    def test_transient_range_failures_retry_without_moving_the_cursor(self):
+        failures=[m.urllib.error.URLError('temporary DNS failure'),
+                  m.urllib.error.HTTPError('https://same',503,'unavailable',None,None)]
+        response=unittest.mock.MagicMock(status=206,headers={'Content-Range':'bytes 0-3/4'})
+        response.__enter__.return_value=response
+        response.read.return_value=b'abcd'
+        refresh=unittest.mock.Mock()
+        with patch.object(m.urllib.request,'urlopen',side_effect=failures+[response]) as opened, patch.object(m.time,'sleep'):
+            remote=m.RemoteZip('https://same',4,refresh)
+            self.assertEqual(remote.read(2),b'ab')
+            self.assertEqual(remote.read(2),b'cd')
+            self.assertEqual(opened.call_count,3)
+            self.assertEqual({c.args[0].full_url for c in opened.call_args_list},{'https://same'})
+            self.assertEqual({c.args[0].get_header('Range') for c in opened.call_args_list},{'bytes=0-3'})
+            refresh.assert_not_called()
+
+    def test_range_retry_is_bounded_and_does_not_accept_bad_or_partial_data(self):
+        for error in [m.urllib.error.URLError('DNS'),TimeoutError('timeout'),m.IncompleteRead(b'a',3)]:
+            with self.subTest(error=type(error).__name__), patch.object(m.urllib.request,'urlopen',side_effect=error) as opened, patch.object(m.time,'sleep'):
+                remote=m.RemoteZip('https://same',4)
+                with self.assertRaises(type(error)):remote.read(2)
+                self.assertEqual(opened.call_count,3)
+                self.assertEqual((remote.pos,remote.cache),(0,b''))
+        for status,header,data in [(200,'bytes 0-3/4',b'abcd'),(206,'bytes 1-3/4',b'abcd'),(206,'bytes 0-3/4',b'a')]:
+            response=unittest.mock.MagicMock(status=status,headers={'Content-Range':header})
+            response.__enter__.return_value=response
+            response.read.return_value=data
+            with self.subTest(status=status,header=header,data=data), patch.object(m.urllib.request,'urlopen',return_value=response) as opened:
+                remote=m.RemoteZip('https://same',4)
+                with self.assertRaises(ValueError):remote.read(2)
+                self.assertEqual(opened.call_count,1)
+                self.assertEqual((remote.pos,remote.cache),(0,b''))
 
     def test_url_renewal_uses_managed_exact_repository_and_keeps_capability_private(self):
         with tempfile.TemporaryDirectory() as d:

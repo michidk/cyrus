@@ -17,6 +17,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from http.client import IncompleteRead
 import tomllib
 import urllib.request
 import urllib.error
@@ -72,22 +74,27 @@ class RemoteZip(io.RawIOBase):
         end = self.pos + count
         if not (self.start <= self.pos and end <= self.start + len(self.cache)):
             finish = min(self.size, max(end, self.pos + 8 * 1024 * 1024))
-            for attempt in range(2):
+            refreshed = False
+            for attempt in range(3):
                 request = urllib.request.Request(self.url, headers={'Range': f'bytes={self.pos}-{finish - 1}'})
                 try:
-                    response = urllib.request.urlopen(request, timeout=120)
+                    with urllib.request.urlopen(request, timeout=120) as response:
+                        if (response.status != 206 or response.headers.get('Content-Range')
+                                != f'bytes {self.pos}-{finish - 1}/{self.size}'):
+                            raise ValueError('archive range response mismatch')
+                        data = response.read(finish - self.pos + 1)
+                        if len(data) != finish - self.pos: raise ValueError('short archive range')
+                    self.cache, self.start = data, self.pos
                     break
                 except urllib.error.HTTPError as error:
-                    if error.code != 403 or not self.refresh or attempt:
+                    if error.code == 403 and self.refresh and not refreshed and attempt < 2:
+                        self.url = self.refresh()
+                        refreshed = True
+                    elif error.code not in {408, 429, 500, 502, 503, 504} or attempt == 2:
                         raise
-                    self.url = self.refresh()
-            with response:
-                if (response.status != 206 or response.headers.get('Content-Range')
-                        != f'bytes {self.pos}-{finish - 1}/{self.size}'):
-                    raise ValueError('archive range response mismatch')
-                self.cache = response.read(finish - self.pos + 1)
-                if len(self.cache) != finish - self.pos: raise ValueError('short archive range')
-                self.start = self.pos
+                except (urllib.error.URLError, TimeoutError, ConnectionError, IncompleteRead):
+                    if attempt == 2: raise
+                time.sleep(0.25 * (2 ** attempt))
         result = self.cache[self.pos - self.start:end - self.start]
         self.pos = end
         return result

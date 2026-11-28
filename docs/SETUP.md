@@ -3535,6 +3535,10 @@ public SHA256 API; it fails when that API is unavailable.
 and authenticates the original manifest/source provenance against explicit
 `--commit` and `--tree`. Its task directory contains `artifact-identity.json`,
 `artifact-digest.json`, `download-url.txt` and the exact source in `source/`.
+Byte-range downloads retry transient transport and service failures at most three
+times. Each retry retains the exact requested range and validates its full response;
+malformed or incomplete ranges still reject. An expired download capability can
+be renewed once through the managed API for the same immutable artifact.
 Pass the read-only install and original-save directory explicitly. Keep task
 output in storage visible to the Docker daemon; a local worktree path may cross
 a symlink into storage the daemon cannot see. The runner checks the source bind
