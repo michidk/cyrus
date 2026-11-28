@@ -100,8 +100,11 @@ from that asset when it becomes available again, including under the same handle
   matrices and displaced positions use `script_transform::scene_transform_at` separately.
   Camera admission checks the restored publication's logical-world generation and projects
   that publication while retaining the supplied projection and inspection settings.
-- Stationary model colors consume in-place source prelighting, material and local-light
-  table edits in the same frame, before asset notifications publish. Missing source
+- Stationary model colors consume in-place material and local-light table edits in the
+  same frame, before asset notifications publish, by comparing their values. An in-place
+  source mesh edit applies in the same frame when it marks its entity (animation poses
+  and pose overrides do) and otherwise on the next frame, so a mesh written elsewhere
+  (water, animation) never re-clips every model. Missing source
   meshes, source materials or runtime light tables retire the prepared draw until the
   inputs return, including restoration under the same handles. A lost prepared draw mesh
   is rebuilt from the retained source without replacing that source.

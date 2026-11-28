@@ -124,6 +124,8 @@ pub(crate) fn apply(
                 if let Some(bounds) = private.get_aabb() {
                     commands.entity(entity).insert(bounds);
                 }
+                // Camera clipping re-prepares a source this frame only when its entity changed.
+                mesh.set_changed();
             }
             continue;
         }
