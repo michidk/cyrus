@@ -58,7 +58,12 @@ only for a matching current-world document. Native book entry shares its existin
 readback with packed-image capture, freezes the prepared source,
 and rejects callbacks after source replacement or book exit. The control state's
 `original_saved_images` reports pending, captured world and rejection. Headless
-hosts explicitly report unavailable readback. Only encoded RGBA8/BGRA8 sRGB
+hosts explicitly report unavailable readback. The read-only control command
+`read_saved_images {savegame_path}` returns the actual retained RGB565 bytes
+only during that ready book visit and after `CapturedImages::admit` accepts the
+explicit SAVEGAME.SAV metadata. Missing/pending capture, replacement source,
+wrong-world metadata and malformed documents reject. This diagnostic neither
+recaptures nor writes storage and does not validate any non-image inverse mapping. Only encoded RGBA8/BGRA8 sRGB
 screenshot formats are supported; HDR/linear readbacks remain unsupported.
 This resource supplies the image group, not complete-slot export readiness;
 production menu routing still requires all other inverse mappings and the full

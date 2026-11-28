@@ -32,7 +32,7 @@ reference for its fields. Command groups:
 | --- | --- |
 | Session | `ping`, `state`, `skip_startup`, `load_scene {name}`, `quit` |
 | Input and camera | `input {key, action}` (Bevy `KeyCode` names; `press`, `release`, `tap`), `schedule_input`, `acquire_input`, `flycam`, `teleport`, `reset_camera` |
-| Capture | `screenshot {path}`, `capture_presentation_frame {path}`, `capture_gameplay_frame {path, pcm_path?, boundary?}` |
+| Capture | `screenshot {path}`, `capture_presentation_frame {path}`, `capture_gameplay_frame {path, pcm_path?, boundary?}`, `read_saved_images {savegame_path}` |
 | Fidelity and rendering | `set_fidelity {area, mode}`, `ray_tracing`, `set_day_night`, `set_modern_effect`, `set_sky_scroll`, `hold_texture_frame` |
 | Audio and movies | `play_sound {effect, position?}`, `play_speech {label}`, `stop_sounds`, `queue_movie {movie}` |
 | Gameplay setup | `place_player`, `trace_player`, `set_attribute`, `mark_dead`, `select_item`, `show_item`, `set_torch`, `cheat {name, value?}`, `console {open?, line?}`, `script_load_world` |
@@ -138,3 +138,11 @@ traversal and before acknowledgement. Per-entry observations and the final raw
 sample must independently match the recording; an endpoint cannot stand in for
 an earlier decision. Missing, extra, reordered or stale dispatch rejects and keeps
 actual partial execution. These controls do not change ordinary gameplay.
+
+`read_saved_images` is a native read-only diagnostic for the current book visit.
+It admits the retained SCR3/THMB group through the typed saved-image assembler
+using the supplied original SAVEGAME.SAV metadata, then returns `screen` and
+`thumbnail` with record names, dimensions and raw little-endian RGB565 `data`
+bytes. It rejects unavailable/pending/stale capture, an unready or different
+world, a closed book and invalid or mismatched metadata. It performs no writes,
+requests no new screenshot and always reports `complete_slot_export: false`.
