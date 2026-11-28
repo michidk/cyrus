@@ -66,10 +66,28 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             saves = Path(d) / 'SAVEGAME'
             (saves / 'SAVEGAME.000').mkdir(parents=True)
-            args = m.original_save_install_arguments(saves)
-            self.assertEqual(args, ['-v', f'{saves}:/fixture-install/SAVEGAME:ro',
-                                    '-e', 'REDGUARD_ORIGINAL_SAVE_INSTALL=/fixture-install'])
-            self.assertEqual(sorted(path.name for path in Path(d).iterdir()), ['SAVEGAME'])
+            install = Path(d) / 'install'
+            (install / 'SAVEGAME').mkdir(parents=True)
+            (install / 'maps').mkdir()
+            (install / 'RGFX.EXE').write_bytes(b'synthetic install marker')
+            args = m.original_save_install_arguments(saves, install)
+            self.assertEqual(args, [
+                '--mount', f'type=bind,src={install},dst=/fixture-install,readonly',
+                '-v', f'{saves}:/fixture-install/SAVEGAME:ro',
+                '-e', 'REDGUARD_ORIGINAL_SAVE_INSTALL=/fixture-install'])
+            self.assertEqual(list((install / 'SAVEGAME').iterdir()), [])
+            self.assertEqual((install / 'RGFX.EXE').read_bytes(), b'synthetic install marker')
+
+    def test_original_save_mount_rejects_absent_nested_target_without_writing_install(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            saves = root / 'slots'
+            saves.mkdir()
+            install = root / 'install'
+            install.mkdir()
+            with self.assertRaisesRegex(ValueError, 'SAVEGAME.*read-only'):
+                m.original_save_install_arguments(saves, install)
+            self.assertEqual(list(install.iterdir()), [])
 
     def test_libtest_worker_limit_preserves_full_suite_and_default_arguments(self):
         self.assertEqual(m.libtest_arguments(None), ['--nocapture'])

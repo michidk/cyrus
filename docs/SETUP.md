@@ -3588,9 +3588,13 @@ When changing media layouts, the runner removes obsolete, untracked, empty
 all source blobs and rejects nonempty files or symlinks before removing either
 placeholder. Installed media and tracked source files are preserved.
 The explicit retained original-save group is also mounted read-only under a
-fixture install and exposed through `REDGUARD_ORIGINAL_SAVE_INSTALL`, so the
-package save-listing and saved-image assembly checks use authentic slots without
-writing them into the linked game installation. This mapping is receipt-bound.
+complete fixture install exposed through `REDGUARD_ORIGINAL_SAVE_INSTALL`.
+The fixture view binds the linked game data read-only, then overlays its existing
+`SAVEGAME` directory with the selected read-only slot group. The linked install
+must already contain that directory; the runner never creates it there. This
+supports both complete-install resolution and save-listing/image assembly checks
+without copying resources or writing slots into the linked installation. The
+install and selected save-group sources are bound into the receipt.
 Pass `--test-threads 1` to run every test in each harness serially when concurrent
 asset-heavy tests exhaust their individual loading deadlines. The default retains
 libtest concurrency. The worker count must be positive and is part of the receipt

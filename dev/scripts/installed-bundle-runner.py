@@ -330,9 +330,12 @@ def runtime_image(root, image):
     return actual
 
 
-def original_save_install_arguments(saves):
-    """Expose the retained slot group through the installed save-listing interface."""
-    return ['-v', f'{saves}:/fixture-install/SAVEGAME:ro',
+def original_save_install_arguments(saves, install):
+    """Expose complete read-only game data with the retained save group overlaid."""
+    if not (install / 'SAVEGAME').is_dir():
+        raise ValueError('install SAVEGAME directory is required for the read-only nested fixture mount')
+    return ['--mount', f'type=bind,src={install},dst=/fixture-install,readonly',
+            '-v', f'{saves}:/fixture-install/SAVEGAME:ro',
             '-e', 'REDGUARD_ORIGINAL_SAVE_INSTALL=/fixture-install']
 
 
@@ -402,7 +405,7 @@ def main():
             binding = dict(artifact=expected, manifest=manifest_hash, projection=projection_hash,
                            image=image, test=test, install=str(install), install_identity=install_identity, fixture=fixture,
                            arguments=arguments, package_cwd=str(paths[test['package']]),
-                           original_save_install='/fixture-install')
+                           original_save_install=dict(root='/fixture-install', install=str(install), saves=str(selected_saves)))
             if test['package'] not in {'cyrus-script', 'cyrus-soup'}:
                 binding['media_plan'] = media
             receipt = receipt_path(results, test['sha256'], binding)
@@ -430,7 +433,7 @@ def main():
                         '-e', 'CYRUS_ORIGINAL_SAVE=/original-saves/SAVEGAME.000',
                         '-e', 'REDGUARD_ORIGINAL_SAVE_DIR=/original-saves',
                         '-e', 'LD_LIBRARY_PATH=' + ':'.join(sorted({str(PurePosixPath(target) / PurePosixPath(e['path']).parent) for e in entries if e['role'] == 'runtime'}))]
-                base += original_save_install_arguments(saves)
+                base += original_save_install_arguments(selected_saves, install)
                 print('waiting for per-harness lock', test['target'], flush=True)
                 for mount in media:
                     base += ['--mount', f'type=bind,src={mount["source"]},dst={mount["destination"]},readonly']
