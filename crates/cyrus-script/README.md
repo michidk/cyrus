@@ -353,3 +353,11 @@ do not replace this load operation. The component import validates the complete
 ordinary-owner census before replacing lists, clears cached traversal and retains
 independent persistent/separate lists. Changed persistent membership rejects
 explicitly. This follows preservation's [full object load](https://github.com/michidk/redguard-preservation/commit/e799ac8d1107f34217c984d3f7fc6b595a4cbbf4).
+
+Original authored-local export is a record-level API under `original-save-import`.
+`ScriptWorld::export_original_authored_locals` maps installed instance ranges to
+live integer variables, rejecting missing or ambiguous owners, overlapping or
+unowned words, unsupported references and inconsistent temporary-source aliases.
+It emits only the SVRG payload and performs no filesystem writes. Complete slot
+assembly, atomic publication and confirmed replacement remain tracked by Cyrus
+#419; native config-directory saves remain available.

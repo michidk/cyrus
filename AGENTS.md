@@ -26,8 +26,14 @@ acceptance, status and session claims. The maintainer's agents also follow
    (`crates/cyrus-assets/assets/title.png`), a higher-resolution redraw of the original
    title that the maintainer chose to ship. If unsure
    whether something counts, it does: leave it in `magic/` and say so.
-2. **The install is read-only,** with one exception: `REDGUARD.CHT`, the original
-   game's own cheat file, is read and written in place by the game and the launcher.
+2. **The install is read-only,** with two exceptions: `REDGUARD.CHT`, the original
+   game's own cheat file, is read and written in place by the game and the launcher;
+   complete original `SAVEGAME/SAVEGAME.nnn` slot exports are permitted by #419.
+   Slot export must validate every required record before filesystem writes, stage
+   the complete slot in a temporary directory and publish it by atomic rename.
+   Replacing an existing original slot requires explicit player confirmation;
+   unsupported state must reject without creating or modifying a slot. Native
+   config-directory saves remain available until their replacement is supported.
    cyrus writes nothing else into the game directory.
    Local state lives where the config crate says: `CYRUS_CONFIG_DIR`, else an
    existing checkout-local state directory (`cargo` pins it),

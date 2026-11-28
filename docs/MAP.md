@@ -410,6 +410,7 @@ module where it is defined and regenerate.
 - `src/script/registry/original_combat.rs` — Original combat allocations bind installed moves before retained values replace defaults.
 - `src/script/registry/original_composition.rs` — Original world owners are assembled on an unpublished replacement.
 - `src/script/registry/original_execution.rs` — Original interpreter and native continuations share one validated ownership census.
+- `src/script/registry/original_export.rs` — Original authored-local record export from complete installed pool ownership.
 - `src/script/registry/original_family.rs` — Original family lookup tables retain vectors independently of native traversal.
 - `src/script/registry/original_presentation.rs` — Original retained light and flat controls bind without rerunning script natives.
 - `src/script/registry/original_session.rs` — Original logical sessions are constructed from installed sources off-live.

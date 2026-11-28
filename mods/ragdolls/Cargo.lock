@@ -968,9 +968,9 @@ dependencies = [
 
 [[package]]
 name = "redguard-preservation"
-version = "0.20.8"
+version = "0.20.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed568dbe9ada3c666c0857ed6f7ee4cf9506d0753fea2a7322886a4c6dec2f91"
+checksum = "3aab0d84f921423f126d350e7996c20a2def0464df1f7788a1459e3bf628d631"
 dependencies = [
  "bitmap2ttf",
  "bytemuck",

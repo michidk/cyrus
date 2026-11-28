@@ -7106,3 +7106,6 @@ pub use original_composition::OriginalWorldAllocations;
 mod original_session;
 #[cfg(feature = "original-save-import")]
 pub use original_session::OriginalSessionImport;
+
+#[cfg(feature = "original-save-import")]
+mod original_export;
