@@ -26,6 +26,40 @@ OBSERVABLES = ('world', 'player', 'actors', 'flags', 'prompts', 'timing', 'conti
 PROJECTED_OBSERVABLES = ('globals', 'inventory', 'random_state', 'native_source')
 
 
+def recorded_movement_scales(entry, bodies):
+    """Read actual movement scales without substituting measured accumulator deltas.
+
+    The original's warmup can force movement to one nominal tick while its
+    measured pending scale continues accumulating independently. See preservation
+    player.md, FPS-derived frame scale. Require both observations and continuous
+    measurement/body boundaries; neither quantity can stand in for the other.
+    """
+    def word(context, field):
+        value = context.get(field)
+        if type(value) is not int or not 0 <= value <= 2**32 - 1:
+            raise ValueError(f'recorded movement context missing or invalid {field}')
+        return value
+
+    previous_frame = entry.get('frame')
+    if type(previous_frame) is not int or previous_frame != 0:
+        raise ValueError('recorded movement requires entry frame zero')
+    previous_total = word(entry.get('context', {}), 'total')
+    scales = []
+    for body in bodies:
+        frame = body.get('frame')
+        if type(frame) is not int or frame != previous_frame + 1:
+            raise ValueError('recorded movement body boundary is discontinuous')
+        context = body.get('context', {})
+        total = word(context, 'total')
+        pending = word(context, 'pending')
+        movement = word(context, 'movement')
+        if (total - previous_total) % 2**32 != pending:
+            raise ValueError(f'frame {frame}: recorded measurement accumulator is discontinuous')
+        scales.append(movement)
+        previous_frame, previous_total = frame, total
+    return scales
+
+
 class NativePhaseError(RuntimeError):
     """A rejected stopped boundary with evidence available even during construction."""
 

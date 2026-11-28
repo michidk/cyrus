@@ -21,6 +21,25 @@ SEGMENT = {'steps': [{'input': [{'after_updates': 0, 'key': 'ControlLeft', 'acti
                      {'checkpoint': {}}]}
 
 
+class RecordedMovementScales(unittest.TestCase):
+    def test_warmup_movement_is_distinct_from_accumulated_measurement(self):
+        entry = dict(frame=0, context=dict(total=100))
+        bodies = [dict(frame=1, context=dict(total=302, pending=202, movement=202)),
+                  dict(frame=2, context=dict(total=506, pending=204, movement=256))]
+        self.assertEqual(pair.recorded_movement_scales(entry, bodies), [202, 256])
+
+    def test_missing_movement_never_falls_back_to_total_or_pending(self):
+        with self.assertRaisesRegex(ValueError, 'movement'):
+            pair.recorded_movement_scales(dict(frame=0, context=dict(total=100)),
+                [dict(frame=1, context=dict(total=304, pending=204))])
+
+    def test_discontinuous_measurement_or_body_rejects(self):
+        for frame, total in [(2, 304), (1, 305)]:
+            with self.subTest(frame=frame, total=total), self.assertRaises(ValueError):
+                pair.recorded_movement_scales(dict(frame=0, context=dict(total=100)),
+                    [dict(frame=frame, context=dict(total=total, pending=204, movement=256))])
+
+
 class Session:
     def __init__(self, states, calls, name, overshoot=False):
         self.states, self.calls, self.name, self.overshoot = states, calls, name, overshoot
