@@ -895,6 +895,23 @@ mod tests {
             directory.insert_asset(std::path::Path::new(&path), repair_bytes);
             app.insert_resource(super::super::WorldLoadRequest(destination.to_string()));
         }
+        if repair == Some(MissingAsset::Menu) {
+            // Let the request initiate its own retry, then synchronize with that
+            // load rather than timing JSON decoding against concurrent tests.
+            app.update();
+            let menu = app.world().resource::<StartupPresentation>().menu.clone();
+            let server = app.world().resource::<AssetServer>().clone();
+            let mut completion = std::pin::pin!(server.wait_for_asset(&menu));
+            loop {
+                app.update();
+                if let Some(result) = bevy::tasks::block_on(bevy::tasks::poll_once(&mut completion))
+                {
+                    result.expect("repaired installed menu must finish loading");
+                    break;
+                }
+                std::thread::yield_now();
+            }
+        }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         while app.world().get_resource::<StartGame>().is_none()
             && std::time::Instant::now() < deadline

@@ -85,6 +85,9 @@ title artwork is an accepted difference, see
   an archive with multiple frames consumes one bounded draw from the shared engine
   random stream, while a single frame consumes none. A failed artwork or cache
   request leaves the current player intact and can be retried.
+  The repaired-menu regression awaits the asset server’s completion result before
+  checking world entry, so concurrent installed-data decoding cannot consume its
+  transition assertion deadline. Failed loads still reject immediately.
 
 The title uses the installed low font and palette-derived tints from `labels.title`.
 It paints one mutable runtime image from the unlabelled background when the status
