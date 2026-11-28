@@ -35,6 +35,20 @@ record exporter alone cannot establish a complete slot. No production complete
 validator or gameplay save routing is enabled while inverse mappings remain open;
 native config-directory saves remain available.
 
+`original_slot::request::ExportRequest` is the application caller for a supplied
+complete-payload producer. `prepare` runs that producer once before reading the
+destination, then exposes a `Create` or `Replace` prompt without filesystem writes
+or a retained lock. `respond` consumes the request: `SaveNew` only creates,
+`ConfirmReplacement` only replaces the version shown to the player, and `Cancel`
+discards the held payload. Wrong-prompt decisions, changed existing slots and
+newly occupied destinations reject. Producer errors retain the slot/path and
+underlying file/world/record context. A confirmed request publishes its prepared
+payload rather than recapturing later live state. This is a tested caller seam,
+not a menu export action: the full native slot assembler and production complete
+validator remain prerequisites. Native menu, quick-save and autosave routing
+continue to use the config-directory store. Caller tests use synthetic validators
+and temporary directories; macOS filesystem execution remains unverified.
+
 `original_slot::publish` takes an existing real SAVEGAME directory and a numeric
 three-digit slot identity. It stages every resource in a temporary directory on
 that filesystem. Linux and macOS use an atomic no-replace rename for new slots

@@ -1,4 +1,6 @@
 //! Complete original-slot validation and atomic native filesystem publication.
+pub mod request;
+
 use anyhow::{Context, Result, ensure};
 use rgpre::import::savegame::{
     SaveGame, SaveSection, SaveSlot, encode_savegame_file, parse_savegame_file,
