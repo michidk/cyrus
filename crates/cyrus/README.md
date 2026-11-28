@@ -35,6 +35,20 @@ record exporter alone cannot establish a complete slot. No production complete
 validator or gameplay save routing is enabled while inverse mappings remain open;
 native config-directory saves remain available.
 
+`original_slot::assembly::SavedImages::decode` admits a nonempty SCR3/THMB pair
+using preservation's typed fixed-size image decoder. `assemble_with_images`
+places that pair into the current world's complete record order, filling only
+missing image placeholders. It freezes the required census once, retains visited
+TSG snapshots and optional LOGBOOK bytes, and rejects duplicate/extra/missing
+records, invalid snapshot images and a capture from a different world. Every
+non-image record and all cross-file/journal semantics still require the supplied
+complete-session validator; none is provided by default. The resulting
+`CompleteSlot` feeds `ExportRequest` without relaxing replacement consent. This
+is the saved-image assembler group, not a framebuffer colour conversion or a
+complete native inverse mapper. Installed tests replace only image records in
+retained authentic slots and preserve all other bytes; original Load continuation
+and multi-world gameplay export remain separate acceptance requirements.
+
 `original_slot::request::ExportRequest` is the application caller for a supplied
 complete-payload producer. `prepare` runs that producer once before reading the
 destination, then exposes a `Create` or `Replace` prompt without filesystem writes
