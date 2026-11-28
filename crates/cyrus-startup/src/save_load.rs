@@ -7,6 +7,10 @@ use serde_json::Value;
 #[derive(Resource, Default)]
 pub struct GameplayThumbnail(pub Option<Vec<u8>>);
 
+/// The single gameplay screenshot request shared by native packed-image and PNG consumers.
+#[derive(Component)]
+pub struct GameplayScreenshot;
+
 /// Requests a screenshot before book presentation replaces the gameplay view.
 pub(super) fn capture_gameplay(
     mut commands: Commands,
@@ -23,17 +27,17 @@ pub(super) fn capture_gameplay(
     }
     use bevy::render::view::screenshot::{Screenshot, ScreenshotCaptured};
     commands.remove_resource::<GameplayThumbnail>();
-    commands.spawn(Screenshot::primary_window()).observe(
-        |event: On<ScreenshotCaptured>, mut commands: Commands| match encode_thumbnail(
-            event.image.clone(),
-        ) {
-            Ok(bytes) => commands.insert_resource(GameplayThumbnail(Some(bytes))),
-            Err(error) => {
-                bevy::log::error!("gameplay snapshot: {error:#}");
-                commands.insert_resource(GameplayThumbnail(None));
+    commands
+        .spawn((Screenshot::primary_window(), GameplayScreenshot))
+        .observe(|event: On<ScreenshotCaptured>, mut commands: Commands| {
+            match encode_thumbnail(event.image.clone()) {
+                Ok(bytes) => commands.insert_resource(GameplayThumbnail(Some(bytes))),
+                Err(error) => {
+                    bevy::log::error!("gameplay snapshot: {error:#}");
+                    commands.insert_resource(GameplayThumbnail(None));
+                }
             }
-        },
-    );
+        });
 }
 
 fn encode_thumbnail(image: Image) -> anyhow::Result<Vec<u8>> {
@@ -224,6 +228,60 @@ impl SaveLoadHost {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn one_book_readback_serves_png_and_host_observers() {
+        use bevy::{
+            ecs::system::RunSystemOnce,
+            render::view::screenshot::{Screenshot, ScreenshotCaptured},
+        };
+        #[derive(Resource, Default)]
+        struct Observed(bool);
+        let mut app = App::new();
+        app.insert_resource(NextState::Pending(cyrus_game::AppState::Menu));
+        app.init_resource::<Observed>();
+        app.world_mut()
+            .spawn((Window::default(), bevy::window::PrimaryWindow));
+        app.world_mut().run_system_once(capture_gameplay).unwrap();
+        let entity = app
+            .world_mut()
+            .query_filtered::<Entity, (With<Screenshot>, With<GameplayScreenshot>)>()
+            .single(app.world())
+            .unwrap();
+        app.add_observer(
+            |_: On<ScreenshotCaptured>, mut observed: ResMut<Observed>| observed.0 = true,
+        );
+        let image = Image::new_fill(
+            bevy::render::render_resource::Extent3d {
+                width: 640,
+                height: 480,
+                depth_or_array_layers: 1,
+            },
+            bevy::render::render_resource::TextureDimension::D2,
+            &[20, 40, 60, 255],
+            bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
+            default(),
+        );
+        app.world_mut()
+            .trigger(ScreenshotCaptured { entity, image });
+        app.world_mut().flush();
+        assert!(app.world().resource::<Observed>().0);
+        let png = app
+            .world()
+            .resource::<GameplayThumbnail>()
+            .0
+            .as_ref()
+            .unwrap();
+        let decoded = image::load_from_memory(png).unwrap();
+        assert_eq!((decoded.width(), decoded.height()), (256, 192));
+        assert_eq!(
+            app.world_mut()
+                .query::<&Screenshot>()
+                .iter(app.world())
+                .count(),
+            1
+        );
+    }
 
     #[test]
     fn gameplay_thumbnail_keeps_aspect_and_is_a_256x192_png() {

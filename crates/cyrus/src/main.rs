@@ -3,6 +3,7 @@
 //! Native install, persistence and control adapters with game/presentation assembly.
 mod audit;
 mod control;
+mod original_images;
 mod scene;
 mod session;
 mod settings;
@@ -296,6 +297,7 @@ fn run(args: Args, mut app: App) -> anyhow::Result<()> {
         debug::register(&mut app);
     }
     app.add_plugins(cyrus_startup::StartupPlugin);
+    original_images::register(&mut app);
     let direct =
         !startup || args.launch.new_game || args.launch.movie.is_some() || args.load_slot.is_some();
     app.insert_resource(cyrus_startup::LaunchRequest::new(
