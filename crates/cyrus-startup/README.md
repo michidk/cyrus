@@ -49,6 +49,10 @@ app.add_plugins(cyrus_startup::LoadingPlugin);
   and control representations, including explicitly unavailable actions.
 - The book render target uses the physical window extent on its first publication and follows later window resizes. The initial camera projection and display sprite fit that extent, and the camera and model frames use the current authored book motion pose.
 - Slot provenance distinguishes native saves from read-only original entries. Original entries appear only on Load and submit a distinct `ImportOriginal` request, with the supported-subset warning visible in the book. Native hosts prepare the saved world when necessary, then import into its matching native-session baseline; the browser rejects installed-slot requests explicitly.
+- `GameplayCaptureRequest` queues one `GameplayScreenshot` before book rendering.
+  Native hosts may bind packed-image capture after that set and observe the same
+  screenshot event as the existing PNG consumer, avoiding duplicate render-target
+  requests. The marker carries no complete-slot export readiness.
 - Hosts serve book storage requests through the `SaveLoadHost` and
   `LastGameLoader` resources; the session itself is captured and restored by
   [cyrus-session](../cyrus-session/README.md).
