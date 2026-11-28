@@ -8,15 +8,19 @@ from pathlib import Path
 import subprocess
 
 
-def write_provenance(directory, head, environment=os.environ):
+def write_provenance(directory, head, environment=os.environ, *, files=None):
     """Bind standard packages to the actual Git checkout and workflow attempt."""
     def git(*args):
         return subprocess.check_output(['git', *args], text=True).strip()
     subprocess.run(['git', 'diff', '--quiet', 'HEAD'], check=True)
-    packages = {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                for path in sorted(directory.glob('cyrus-*.tar.gz'))}
-    packages.update({path.name: hashlib.sha256(path.read_bytes()).hexdigest()
-                     for path in sorted(directory.glob('cyrus-*.zip'))})
+    if files is not None:
+        if any(Path(name).name != name or not (directory / name).is_file()
+               or (directory / name).is_symlink() for name in files):
+            raise ValueError('artifact files must be regular files inside the package directory')
+        paths = [directory / name for name in files]
+    else:
+        paths = sorted(directory.glob('cyrus-*.tar.gz')) + sorted(directory.glob('cyrus-*.zip'))
+    packages = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
     if not packages:
         raise ValueError('artifact provenance requires packaged executables')
     record = dict(version=1, repository=environment['GITHUB_REPOSITORY'],
@@ -32,5 +36,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directory', type=Path)
     parser.add_argument('head')
+    parser.add_argument('--file', action='append', dest='files',
+                        help='explicit artifact filename, repeat for non-package executables')
     args = parser.parse_args()
-    write_provenance(args.directory, args.head)
+    write_provenance(args.directory, args.head, files=args.files)

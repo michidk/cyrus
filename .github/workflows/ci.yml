@@ -4,9 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full immutable candidate commit SHA to verify
+        required: true
+        type: string
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}-${{ inputs.source_commit || 'automatic' }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
@@ -24,22 +30,62 @@ defaults:
     shell: bash
 
 jobs:
+  source:
+    name: Admit immutable source
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Validate source commit
+        id: source
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_COMMIT: ${{ github.sha }}
+          CANDIDATE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          requested="$EVENT_COMMIT"
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            requested="$CANDIDATE_COMMIT"
+          fi
+          if [[ ! "$requested" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'source_commit must be a full lowercase commit SHA' >&2
+            exit 1
+          fi
+          printf 'commit=%s\n' "$requested" >> "$GITHUB_OUTPUT"
+
   packaging-macos:
+    needs: source
     name: Package with macOS Bash
     runs-on: macos-26
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          persist-credentials: false
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_COMMIT: ${{ needs.source.outputs.commit }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
       - name: Check native packaging with the system shell
         run: dev/scripts/gates.sh packaging-macos
 
   test:
+    needs: source
     name: Test Suite
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          persist-credentials: false
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_COMMIT: ${{ needs.source.outputs.commit }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
       # The debug build of the workspace fills the hosted runner's disk; the
       # linker then dies with a bus error. Drop the preinstalled SDKs first.
@@ -65,6 +111,8 @@ jobs:
         run: dev/scripts/gates.sh test
 
       - name: Preserve install-backed session regression executable
+        env:
+          EXPECTED_COMMIT: ${{ needs.source.outputs.commit }}
         run: |
           mkdir -p "$RUNNER_TEMP/original-runtime-test"
           python3 dev/scripts/collect-test-executable.py \
@@ -72,6 +120,8 @@ jobs:
             "$RUNNER_TEMP/original-runtime-test/original-runtime-test"
           git rev-parse HEAD > "$RUNNER_TEMP/original-runtime-test/source-sha.txt"
           sha256sum "$RUNNER_TEMP/original-runtime-test/original-runtime-test" > "$RUNNER_TEMP/original-runtime-test/executable-sha256.txt"
+          python3 dev/scripts/artifact_provenance.py \
+            "$RUNNER_TEMP/original-runtime-test" "$EXPECTED_COMMIT" --file original-runtime-test
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: original-runtime-test-linux
@@ -79,12 +129,20 @@ jobs:
           retention-days: 7
 
   lints:
+    needs: source
     name: Lints
     runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          persist-credentials: false
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_COMMIT: ${{ needs.source.outputs.commit }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
       - name: Install Bevy's Linux libraries
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
@@ -107,12 +165,20 @@ jobs:
         run: dev/scripts/gates.sh lints
 
   web:
+    needs: source
     name: Browser build
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
       - name: Checkout sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ needs.source.outputs.commit }}
+          persist-credentials: false
+      - name: Verify immutable checkout
+        env:
+          EXPECTED_COMMIT: ${{ needs.source.outputs.commit }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
 
       - name: Install toolchain
         uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable

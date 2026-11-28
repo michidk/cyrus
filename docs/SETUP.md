@@ -271,6 +271,31 @@ their separate build and smoke checks and upload as `native-raytracing-<target>`
 A ray-tracing failure still fails the job, while the already verified standard
 packages remain available for runtime acceptance.
 
+The Test & Lint workflow also accepts a manual candidate without a PR. Publish
+its branch, then dispatch the workflow on main with the candidate's full lowercase
+commit SHA:
+
+```sh
+git push origin HEAD:refs/heads/verify/candidate
+gh workflow run ci.yml --repo michidk/cyrus --ref main \
+  -f source_commit=<full-candidate-commit-sha>
+```
+
+Admission rejects branch names and empty inputs before checkout. Every job checks
+out that exact commit and verifies it before running the existing packaging,
+test, lint or browser commands. Candidate concurrency includes the requested SHA.
+The workflow uses contents-read permissions and does not persist checkout
+credentials. No install or credentials are uploaded.
+
+The `original-runtime-test-linux` artifact contains the regression executable and
+`source-provenance.json`, binding its SHA256 to the requested commit, actual
+checkout commit/tree, repository, workflow run and attempt. For manual runs the
+workflow event's head is the dispatch ref, so use this source record and the
+admitted commit when matching candidate results. Public CI runs without the game
+install. Its success does not replace explicit `REDGUARD_DIR` verification against
+the linked install; installed-data checks must still complete locally, without
+no-install skips, before the candidate is delivered to main.
+
 Fetch an uploaded standard Linux executable from a specific PR workflow run with
 its full head SHA, without a local build:
 

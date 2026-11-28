@@ -10,6 +10,30 @@ import artifact_provenance as provenance
 
 
 class ProducerTests(unittest.TestCase):
+    def test_explicit_test_executable_binds_only_declared_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            executable = folder / 'original-runtime-test'
+            executable.write_bytes(b'test executable')
+            (folder / 'unrelated').write_bytes(b'not part of the receipt')
+            environment = dict(GITHUB_REPOSITORY='michidk/cyrus',
+                               GITHUB_RUN_ID='7', GITHUB_RUN_ATTEMPT='1')
+            with mock.patch.object(provenance.subprocess, 'run'), \
+                    mock.patch.object(provenance.subprocess, 'check_output', side_effect=['a'*40, 'b'*40]):
+                record = provenance.write_provenance(folder, 'a'*40, environment,
+                                                     files=['original-runtime-test'])
+            self.assertEqual(record['packages'], {
+                executable.name: hashlib.sha256(executable.read_bytes()).hexdigest()})
+            self.assertEqual(record['head'], record['checkout_commit'])
+
+    def test_explicit_missing_or_external_files_cannot_publish_receipt(self):
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(provenance.subprocess, 'run'):
+            folder = Path(temporary)
+            for name in ('missing', '../outside', '/etc/passwd'):
+                with self.subTest(name=name), self.assertRaises(ValueError):
+                    provenance.write_provenance(folder, 'a'*40, {}, files=[name])
+            self.assertFalse((folder / 'source-provenance.json').exists())
+
     def test_records_checkout_tree_attempt_and_exact_package_bytes(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
