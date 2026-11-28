@@ -714,3 +714,97 @@ pub(super) fn inventory_asset(counts: &[(u16, u32)]) -> cyrus_assets::hud::HudAs
         island_map: Default::default(),
     }
 }
+
+#[cfg(feature = "original-save-import")]
+#[test]
+fn original_inventory_export_retains_raw_flags_and_rejects_incomplete_snapshots() {
+    use cyrus_script::script::{InventorySnapshot, ScriptHud};
+    use rgpre::import::savegame::parse_save_inventory;
+    let asset = inventory_asset(&[(2, 3), (7, 4)]);
+    let hud = ScriptHud::default();
+    hud.configure(&asset, &cyrus_game::preferences::Preferences::default());
+    let snapshot = hud.snapshot_inventory().unwrap();
+    assert!(
+        snapshot
+            .export_original(&asset)
+            .unwrap_err()
+            .to_string()
+            .contains("metadata absent")
+    );
+    let mut value = serde_json::to_value(snapshot).unwrap();
+    value["original_encoding"] = serde_json::json!({
+        "flags": {"2": {"hide": 129, "pushed": 254}}, "selected": -1
+    });
+    value["selected"] = serde_json::Value::Null;
+    value["items"]["2"]["hidden"] = true.into();
+    value["items"]["2"]["used"] = u32::MAX.into();
+    value["saved_counts"]["2"] = serde_json::json!({"value": 23, "pushed": true});
+    let export = |value: serde_json::Value| {
+        serde_json::from_value::<InventorySnapshot>(value)
+            .unwrap()
+            .export_original(&asset)
+    };
+    let bytes = export(value.clone()).unwrap();
+    let decoded = parse_save_inventory(&bytes, 1).unwrap();
+    let item = decoded.items[0].state();
+    assert_eq!((item.hide, item.pushed, item.player_total), (129, 254, 3));
+    assert_eq!((item.item_used, item.saved_player_total), (u32::MAX, 23));
+    assert_eq!(decoded.selected_item, -1);
+    let mut missing = value.clone();
+    missing["items"]["2"]["used"] = serde_json::Value::Null;
+    assert!(
+        export(missing)
+            .unwrap_err()
+            .to_string()
+            .contains("use counter absent")
+    );
+    let mut missing = value.clone();
+    missing["saved_counts"] = serde_json::json!({});
+    assert!(
+        export(missing)
+            .unwrap_err()
+            .to_string()
+            .contains("push history absent")
+    );
+    let mut different = value.clone();
+    different["original_encoding"]["flags"] = serde_json::json!({"7": {"hide":0,"pushed":0}});
+    assert!(
+        export(different)
+            .unwrap_err()
+            .to_string()
+            .contains("census differs")
+    );
+    let mut unsupported_count = value.clone();
+    unsupported_count["items"]["2"]["count"] = u32::MAX.into();
+    assert!(
+        export(unsupported_count)
+            .unwrap_err()
+            .to_string()
+            .contains("player_total exceeds supported signed range")
+    );
+    let mut different_source = value.clone();
+    different_source["definitions"]["2"]["total"] = 101.into();
+    let error = format!("{:#}", export(different_source).unwrap_err());
+    assert!(
+        error.contains("SAVEGAME.SAV SVIT")
+            && error.contains("item 2")
+            && error.contains("installed definition differs"),
+        "{error}"
+    );
+    let mut unsupported = value.clone();
+    unsupported["items"]["2"]["hidden"] = false.into();
+    assert!(
+        export(unsupported)
+            .unwrap_err()
+            .to_string()
+            .contains("noncanonical hide")
+    );
+    let mut unsupported = value;
+    unsupported["original_encoding"]["selected"] = i32::MAX.into();
+    assert!(
+        export(unsupported)
+            .unwrap_err()
+            .to_string()
+            .contains("selection")
+    );
+}

@@ -196,6 +196,60 @@ impl Snapshot {
         Ok(snapshot)
     }
 
+    /// Read the complete current semantic continuation against exact installed sources.
+    /// No instruction, host effect, timer or token is advanced. Legacy task timing
+    /// must first be restored and migrated; failed runtimes cannot be exported.
+    pub fn continuation(
+        &self,
+        origin: CodeOrigin,
+        sources: &BTreeMap<CodeOrigin, Arc<Program>>,
+    ) -> Result<ContinuationState> {
+        ensure!(
+            self.version == 2,
+            "semantic export requires a current VM snapshot"
+        );
+        ensure!(
+            self.state.failure.is_none(),
+            "failed VM continuation cannot be exported"
+        );
+        ensure!(
+            self.state
+                .tasks
+                .iter()
+                .flatten()
+                .all(|task| task.legacy.is_none()),
+            "legacy task timing must be migrated before semantic export"
+        );
+        let tokens = self.task_tokens().map(|token| (token, token)).collect();
+        let runtime = Runtime::from_snapshot(
+            origin,
+            self.clone(),
+            sources,
+            &tokens,
+            "semantic continuation export".into(),
+        )?;
+        let state = runtime.state;
+        Ok(ContinuationState {
+            variables: state.variables,
+            cursors: state
+                .threads
+                .map(|thread| thread.map(|thread| thread.cursor)),
+            return_to: state.return_to,
+            result: state.script_return,
+            saved_result: state.saved_return,
+            anchor: state.anchor,
+            tasks: state.tasks.map(|task| {
+                task.map(|task| ContinuationTask {
+                    token: task.token,
+                    source: task.source,
+                })
+            }),
+            status: state.task_status,
+            pause: state.task_pause,
+            timers: state.task_timer,
+        })
+    }
+
     /// Rebind logical actor identities before committing a replacement world.
     /// The host validates allocation identity; this operation is atomic on error
     /// and runs no saved instructions or native effects.
