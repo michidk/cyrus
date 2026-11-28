@@ -24,14 +24,11 @@ impl OriginalImages {
         source: &PreparedWorld,
         path: &std::path::Path,
     ) -> anyhow::Result<Value> {
-        use anyhow::Context;
         use rgpre::import::savegame::SaveImageKind;
         anyhow::ensure!(state == AppState::Menu, "active book visit required");
         anyhow::ensure!(self.pending.is_none(), "native readback pending");
-        let images = self
-            .images
-            .as_ref()
-            .context("native captured images unavailable")?;
+        let images =
+            anyhow::Context::context(self.images.as_ref(), "native captured images unavailable")?;
         anyhow::ensure!(
             self.source.as_ref() == Some(source),
             "prepared source changed since readback"
@@ -40,9 +37,13 @@ impl OriginalImages {
             source.world == Some(images.world()),
             "capture world differs from prepared world"
         );
-        let bytes = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
-        let current = rgpre::import::savegame::parse_savegame_file(&bytes)
-            .with_context(|| format!("parse {}", path.display()))?;
+        let bytes = anyhow::Context::with_context(std::fs::read(path), || {
+            format!("read {}", path.display())
+        })?;
+        let current = anyhow::Context::with_context(
+            rgpre::import::savegame::parse_savegame_file(&bytes),
+            || format!("parse {}", path.display()),
+        )?;
         let _admitted = images.admit(&current)?;
         let (screen, thumbnail) = images.records();
         Ok(
