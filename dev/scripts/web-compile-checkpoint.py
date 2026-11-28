@@ -32,6 +32,10 @@ def compiler_identity(expected):
     return {**expected, 'source': source}
 
 
+class UnstableCompilationOutput(ValueError):
+    """A live Cargo output changed while its checkpoint was being captured."""
+
+
 class HashingReader:
     """Hash the exact bytes consumed by the archive, without a second copy."""
 
@@ -58,7 +62,7 @@ def write_archive(destination, root, entries):
                     reader = HashingReader(source)
                     archive.addfile(member, reader)
                     if reader.digest.hexdigest() != digest:
-                        raise ValueError('compilation output changed during checkpoint: ' + name)
+                        raise UnstableCompilationOutput('compilation output changed during checkpoint: ' + name)
         output.flush()
         os.fsync(output.fileno())
 
@@ -300,6 +304,7 @@ def main():
     elif args.operation == 'restore':
         print(f'restored {restore(args.directory, args.target, expected)} completed compilation files', flush=True)
     else:
+        deferred = []
         for line in sys.stdin:
             try:
                 event = json.loads(line)
@@ -309,9 +314,19 @@ def main():
             if event.get('reason') == 'compiler-message':
                 print(event.get('message', {}).get('rendered', ''), end='', flush=True)
             else:
-                retain(args.directory, args.target, event, expected)
+                try:
+                    retain(args.directory, args.target, event, expected)
+                except UnstableCompilationOutput as error:
+                    # Cargo may refresh fingerprint metadata after emitting a unit.
+                    # Keep recording later units, then retry after its stream ends.
+                    print(f'deferred unstable checkpoint: {error}', flush=True)
+                    deferred.append(event)
+                    continue
                 if event.get('reason') == 'compiler-artifact':
                     print('checkpointed ' + event['target']['name'], flush=True)
+        for event in deferred:
+            # A final inconsistent capture still fails and publishes no receipt.
+            retain(args.directory, args.target, event, expected)
 
 
 if __name__ == '__main__':

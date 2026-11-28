@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check interrupted application compilation recovery without invoking Cargo."""
 import importlib.util
+import io
 import errno
 from pathlib import Path
 import tempfile
@@ -144,6 +145,68 @@ m.retain(Path(sys.argv[2]),Path(sys.argv[3]),json.loads(sys.argv[4]),json.loads(
                 self.assertEqual({p: p.read_bytes() for p in (self.cache / 'units').glob('*/record.json')}, records)
                 self.assertEqual(len(list((self.cache / 'units').iterdir())), 1)
                 self.assertEqual(self.artifact.read_bytes(), b'new live output')
+
+    def record_events(self, messages):
+        snapshot = self.root / 'snapshot.json'
+        snapshot.write_text(units.json.dumps({'files': {}}))
+        self.identity = units.checkpoint.identity(snapshot, 'same')
+        arguments = ['checkpoint', 'record', str(self.cache), str(snapshot), 'same', str(self.target)]
+        with patch.object(sys, 'argv', arguments), patch.object(sys, 'stdin', messages), \
+                patch.object(sys, 'stdout', io.StringIO()):
+            units.main()
+
+    def test_stream_defers_changed_fingerprint_and_retains_later_units(self):
+        later = self.artifact.with_name('liblater-def.rlib')
+        later.write_bytes(b'later completed unit')
+        later_event = {**self.event, 'target': {'name': 'later'}, 'filenames': [str(later)]}
+        original = units.tarfile.TarFile.addfile
+        changed = False
+
+        def rewrite_fingerprint(archive, info, fileobj=None):
+            nonlocal changed
+            if info.name == str(self.fingerprint.relative_to(self.target)) and not changed:
+                changed = True
+                self.fingerprint.write_text('new metadata')
+            return original(archive, info, fileobj)
+
+        def messages():
+            yield units.json.dumps(self.event)
+            self.assertEqual(list((self.cache / 'units').iterdir()), [])
+            yield units.json.dumps(later_event)
+            self.assertEqual(len(list((self.cache / 'units').glob('*/record.json'))), 1)
+
+        with patch.object(units.tarfile.TarFile, 'addfile', side_effect=rewrite_fingerprint, autospec=True):
+            self.record_events(messages())
+        self.assertTrue(changed)
+        self.assertEqual(len(list((self.cache / 'units').glob('*/record.json'))), 2)
+        units.shutil.rmtree(self.target)
+        self.assertEqual(units.restore(self.cache, self.target, self.identity), 4)
+        self.assertEqual(self.fingerprint.read_text(), 'new metadata')
+        self.assertEqual(later.read_bytes(), b'later completed unit')
+
+    def test_stream_rejects_persistently_unstable_final_capture(self):
+        original = units.tarfile.TarFile.addfile
+        captures = 0
+
+        def rewrite_fingerprint(archive, info, fileobj=None):
+            nonlocal captures
+            if info.name == str(self.fingerprint.relative_to(self.target)):
+                captures += 1
+                self.fingerprint.write_text(str(captures) * 11)
+            return original(archive, info, fileobj)
+
+        with patch.object(units.tarfile.TarFile, 'addfile', side_effect=rewrite_fingerprint, autospec=True):
+            with self.assertRaisesRegex(ValueError, 'compilation output changed during checkpoint'):
+                self.record_events([units.json.dumps(self.event)])
+        self.assertEqual(captures, 2)
+        self.assertEqual(list((self.cache / 'units').iterdir()), [])
+
+    def test_stream_does_not_retry_archive_io_failure(self):
+        with patch.object(units, 'write_archive', side_effect=OSError(errno.ENOSPC, 'write failed')) as write:
+            with self.assertRaises(OSError):
+                self.record_events([units.json.dumps(self.event)])
+        self.assertEqual(write.call_count, 1)
+        self.assertEqual(list((self.cache / 'units').iterdir()), [])
 
     def test_changed_source_is_rejected_without_reverting_live_outputs(self):
         original = units.tarfile.TarFile.addfile
