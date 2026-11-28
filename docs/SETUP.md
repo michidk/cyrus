@@ -348,7 +348,10 @@ test executable with `--list`. Hosted Ubuntu binaries may require a newer libc
 than the pod. Use the pinned Ubuntu runtime from `dev/docker/dev/Dockerfile` with
 its required system libraries when needed. Run each admitted test executable
 with `--nocapture` and `RUST_MIN_STACK=8388608`, recording the exact artifact,
-package, executable, exit status and output. Reject `skipped: no install` output;
+package, executable, exit status and output. Validate each output with
+`python3 dev/scripts/test_bundle.py installed-output <log>`.
+This rejects missing-install and missing-fixture skips, including original-save
+and edition-specific inputs. Supply those inputs before accepting that harness;
 public no-install success never establishes installed-data acceptance. Tests
 requiring original save slots still need explicit local slot inputs. Exported
 libtest executables do not cover doctests, lint/browser checks or isolated mod

@@ -75,6 +75,17 @@ class BundleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bundle.runtime_install_mounts(self.root, 'relative/source')
 
+    def test_installed_output_rejects_missing_fixture_skips(self):
+        for output in [
+            "skipped: no original save supplied with CYRUS_ORIGINAL_SAVE",
+            "SKIP original subset: no original slots installed",
+            "skipped: no CD-edition install (REDGUARD_CD_DIR)",
+            "test import ... SKIP retained runtime admission: missing slot\n ok",
+        ]:
+            with self.subTest(output=output), self.assertRaisesRegex(ValueError, "skipped"):
+                bundle.require_installed_output(output)
+        bundle.require_installed_output("test skip_startup_preserves_controls ... ok\n1 passed")
+
     def test_roundtrip_includes_companion_and_exact_identity(self):
         manifest = self.export()
         admitted = bundle.admit(self.output, 'a' * 40, 'b' * 40, 'Linux', 'x86_64')

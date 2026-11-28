@@ -195,6 +195,13 @@ def extract(directory, manifest, destination, package=None, test=None):
         raise
 
 
+def require_installed_output(output):
+    """Reject successful libtest exits that did not exercise required local inputs."""
+    skipped = re.search(r"\b(?:skipped:|SKIP\b)[^\n]*", output, re.IGNORECASE)
+    if skipped:
+        raise ValueError(f"installed test skipped required input: {skipped.group()}")
+
+
 def runtime_install_mounts(install, workspace_root):
     """Preserve the local Files catalog's install and sibling media layout.
 
@@ -236,7 +243,12 @@ def main():
     mounts = commands.add_parser('runtime-mounts', help='plan read-only local install/media mounts')
     mounts.add_argument('install', type=Path)
     mounts.add_argument('workspace_root')
+    output = commands.add_parser('installed-output', help='reject missing-input skips in a test log')
+    output.add_argument('log', type=Path)
     args = parser.parse_args()
+    if args.command == 'installed-output':
+        require_installed_output(args.log.read_text(errors='replace'))
+        return
     if args.command == 'runtime-mounts':
         print(json.dumps(runtime_install_mounts(args.install, args.workspace_root), indent=2))
         return
