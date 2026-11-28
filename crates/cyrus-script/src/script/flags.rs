@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Ordered global values and latches, tied to the exact installed flag schema.
 ///
 /// Preserves the independent state described by preservation's
-/// `docs/formats/SAVEGAME.md#global-flags` without encoding an original SVGF record.
+/// `docs/formats/SAVEGAME.md#global-flags` independently of original SVGF encoding.
 /// Deserialize first, then validate and commit with `ScriptWorld::restore_flags`.
 /// Capturing or restoring does not execute native flag operations or scripts.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,6 +19,43 @@ pub struct GlobalFlagsSnapshot {
 
 #[cfg(feature = "original-save-import")]
 impl GlobalFlagsSnapshot {
+    /// Encode current values in exact installed flag order using the documented
+    /// unlatched runtime kinds. Latched-byte encoding remains unsupported.
+    /// This emits one SVGF payload, never a complete original save slot.
+    pub fn export_original(&self, definition: &Definition) -> Result<Vec<u8>> {
+        let mut flags =
+            Flags::prepare(definition).context("SAVEGAME.SAV SVGF: installed flag schema")?;
+        let mut values = Vec::new();
+        flags
+            .restore(&mut values, self.clone())
+            .context("SAVEGAME.SAV SVGF: native flag snapshot validation")?;
+        let states = flags
+            .kinds
+            .iter()
+            .zip(&flags.latched)
+            .zip(&flags.definitions)
+            .map(|((kind, latched), definition)| {
+                anyhow::ensure!(
+                    !latched,
+                    "SAVEGAME.SAV SVGF flag {}: latched state encoding unsupported",
+                    definition.name
+                );
+                // Preservation's SOUP global-flag rules define unlatched kinds.
+                Ok(match kind {
+                    Kind::Bool => 0,
+                    Kind::FlipFlop => 1,
+                    Kind::Counter => 2,
+                    Kind::Number => 3,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        rgpre::import::savegame::encode_save_flags(&rgpre::import::savegame::SaveFlags {
+            values,
+            states,
+        })
+        .map_err(Into::into)
+    }
+
     pub(super) fn from_original(
         definition: &Definition,
         saved: &rgpre::import::savegame::SaveFlags,

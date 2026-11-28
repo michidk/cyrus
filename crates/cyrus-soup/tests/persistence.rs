@@ -744,3 +744,48 @@ fn imported_paused_task_and_invalid_binding_do_not_reissue_effects() {
     assert!(Snapshot::from_continuation(CodeOrigin(100), invalid, &sources).is_err());
     assert_eq!(host.calls, 0);
 }
+
+#[test]
+fn semantic_export_preserves_current_state_and_rejects_legacy_failure_or_source_changes() {
+    let (runtime, host, sources) = waiting();
+    let snapshot = runtime.snapshot(&sources).unwrap();
+    let before = serde_json::to_value(&snapshot).unwrap();
+    let calls = host.calls;
+    let state = snapshot.continuation(CodeOrigin(100), &sources).unwrap();
+    let rebuilt = Snapshot::from_continuation(CodeOrigin(100), state, &sources).unwrap();
+    assert_eq!(serde_json::to_value(rebuilt).unwrap(), before);
+    assert_eq!(host.calls, calls);
+    assert_eq!(serde_json::to_value(&snapshot).unwrap(), before);
+    for (field, value, message) in [
+        ("/version", json!(1), "current VM snapshot"),
+        (
+            "/state/failure",
+            json!("retained native failure"),
+            "failed VM",
+        ),
+        ("/state/threads/0/cursor", json!(u32::MAX), "cursor"),
+    ] {
+        let mut invalid = before.clone();
+        *invalid.pointer_mut(field).unwrap() = value;
+        let invalid: Snapshot = serde_json::from_value(invalid).unwrap();
+        let error = format!(
+            "{:#}",
+            invalid
+                .continuation(CodeOrigin(100), &sources)
+                .err()
+                .unwrap()
+        );
+        assert!(error.contains(message), "{error}");
+    }
+    let mut changed_sources = sources.clone();
+    let mut changed = sources[&CodeOrigin(100)].as_ref().clone();
+    changed.variables[0] += 1;
+    changed_sources.insert(CodeOrigin(100), Arc::new(changed));
+    assert!(
+        snapshot
+            .continuation(CodeOrigin(100), &changed_sources)
+            .is_err()
+    );
+    assert!(snapshot.continuation(CodeOrigin(101), &sources).is_err());
+    assert_eq!(serde_json::to_value(&snapshot).unwrap(), before);
+}

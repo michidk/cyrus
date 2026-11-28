@@ -3,6 +3,9 @@ use anyhow::{Context, Result};
 use cyrus_assets::hud::{HudAsset, InventoryItem};
 use std::collections::BTreeMap;
 
+#[cfg(feature = "original-save-import")]
+mod original_export;
+
 // Items the engine addresses by fixed index (preservation `engine/hud.md`, `engine/SOUP.md`), named
 // after the installed ITEM.INI comments.
 pub(super) const SABRE: u16 = 1;
@@ -35,6 +38,21 @@ pub struct InventorySnapshot {
     selected: Option<u16>,
     #[serde(default)]
     saved_counts: BTreeMap<u16, SavedCount>,
+    #[serde(default)]
+    original_encoding: Option<OriginalEncoding>,
+}
+
+/// Original flag representations and selection identity retained across native saves.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct OriginalEncoding {
+    flags: BTreeMap<u16, OriginalItemEncoding>,
+    selected: i32,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+struct OriginalItemEncoding {
+    hide: u8,
+    pushed: u8,
 }
 
 /// PushItem keeps the first saved word until PopItem clears its flag.
@@ -69,6 +87,7 @@ pub struct Inventory {
     selected: Option<u16>,
     saved_counts: BTreeMap<u16, SavedCount>,
     used: BTreeMap<u16, Option<u32>>,
+    original_encoding: Option<OriginalEncoding>,
 }
 impl Inventory {
     /// Capture every item, including hidden, empty and final installed records.
@@ -94,6 +113,7 @@ impl Inventory {
                 .collect(),
             selected: self.selected,
             saved_counts: self.saved_counts.clone(),
+            original_encoding: self.original_encoding.clone(),
         }
     }
 
@@ -158,6 +178,7 @@ impl Inventory {
             items,
             selected: snapshot.selected,
             saved_counts: snapshot.saved_counts,
+            original_encoding: snapshot.original_encoding,
             used,
         })
     }
@@ -180,7 +201,8 @@ impl Inventory {
             .map(|&id| (id, None))
             .collect::<BTreeMap<_, _>>();
         for ((&id, item), saved) in items.iter_mut().zip(&saved.items) {
-            used.insert(id, Some(saved.item_used()));
+            let saved = saved.state();
+            used.insert(id, Some(saved.item_used));
             item.count = saved
                 .player_total
                 .try_into()
@@ -197,8 +219,8 @@ impl Inventory {
             saved_counts.insert(
                 id,
                 SavedCount {
-                    value: saved.unknown_12,
-                    pushed: saved.unknown_01 != 0,
+                    value: saved.saved_player_total,
+                    pushed: saved.pushed != 0,
                 },
             );
         }
@@ -211,6 +233,21 @@ impl Inventory {
             items,
             selected,
             saved_counts,
+            original_encoding: Some(OriginalEncoding {
+                flags: hud
+                    .inventory
+                    .keys()
+                    .copied()
+                    .zip(saved.items.iter().map(|item| {
+                        let state = item.state();
+                        OriginalItemEncoding {
+                            hide: state.hide,
+                            pushed: state.pushed,
+                        }
+                    }))
+                    .collect(),
+                selected: saved.selected_item,
+            }),
         })
     }
 
@@ -244,6 +281,7 @@ impl Inventory {
             items: hud.inventory.clone(),
             selected: hud.inventory.keys().next().copied(),
             saved_counts: BTreeMap::new(),
+            original_encoding: None,
             used: hud.inventory.keys().map(|&id| (id, Some(0))).collect(),
         };
         for &id in &hud.start_items {

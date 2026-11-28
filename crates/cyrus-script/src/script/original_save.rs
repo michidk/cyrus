@@ -374,6 +374,79 @@ impl OriginalOwnerContinuation {
         decode().with_context(|| format!("original code owner {} continuation", binding.owner_id))
     }
 
+    /// Encode current native code-owner execution into a retained SMCO record.
+    /// The binding must name the exact installed owner and all current native
+    /// task tokens/sources. Independent packed state and SVRG ownership are retained;
+    /// this does not assemble a complete record population or save slot.
+    /// Unsupported temporary state rejects without modifying the supplied owner.
+    pub fn encode_code(
+        &self,
+        owner: &rgpre::import::savegame::SaveCodeOwner,
+        binding: OriginalCodeBinding,
+        sources: &std::collections::BTreeMap<
+            cyrus_soup::CodeOrigin,
+            std::sync::Arc<cyrus_soup::program::Program>,
+        >,
+    ) -> Result<rgpre::import::savegame::SaveCodeOwner> {
+        let encode = || -> Result<_> {
+            ensure!(
+                owner.owner_id == binding.owner_id,
+                "retained code owner differs from installed binding"
+            );
+            ensure!(
+                owner.script_continuation().data == binding.origin.0,
+                "retained code source differs from installed binding"
+            );
+            let current = self.vm.continuation(binding.origin, sources)?;
+            let absolute = |cursor: u32| {
+                binding
+                    .origin
+                    .0
+                    .checked_add(cursor)
+                    .context("script cursor exceeds saved code-offset domain")
+            };
+            let mut slots = [rgpre::import::savegame::SaveTaskSlot {
+                callback: 0,
+                status: 0,
+                pause: 0,
+                timer: 0,
+                variables: [0; 4],
+            }; 6];
+            for (index, slot) in slots.iter_mut().enumerate() {
+                slot.callback = match (current.tasks[index], binding.tasks[index]) {
+                    (None, None) => 0,
+                    (Some(task), Some(bound)) => {
+                        ensure!(
+                            task.token == bound.token && task.source == bound.source,
+                            "task {index}: native token/source binding differs"
+                        );
+                        task.source.operand()?
+                    }
+                    _ => anyhow::bail!("task {index}: native task ownership differs"),
+                };
+                slot.status = current.status[index];
+                slot.pause = current.pause[index];
+                slot.timer = current.timers[index];
+                slot.variables = self.invocation_words[index];
+            }
+            let mut encoded = owner.clone();
+            encoded.replace_execution(
+                rgpre::import::savegame::SaveScriptContinuation {
+                    data: binding.origin.0,
+                    entry: current.cursors[1].map(absolute).transpose()?.unwrap_or(0),
+                    cursor: absolute(current.cursors[0].context("main continuation absent")?)?,
+                    return_to: current.return_to.map(absolute).transpose()?.unwrap_or(0),
+                    result: current.result,
+                    saved_result: current.saved_result,
+                    anchor: current.anchor,
+                },
+                slots,
+            )?;
+            Ok(encoded)
+        };
+        encode().with_context(|| format!("original SMCO code owner {} export", binding.owner_id))
+    }
+
     /// Stage a shell using its named installed definition and private allocation.
     /// The published execution view supplies the cleared temporary-actor Anchor
     /// and pause values; these fields are not borrowed from a native baseline.
