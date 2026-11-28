@@ -16,6 +16,20 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 
 class Tests(unittest.TestCase):
+    def test_single_target_retry_requires_package_and_exact_manifest_harness(self):
+        manifest = dict(files=[dict(role='test', package='script', target='original_save'),
+                               dict(role='test', package='other', target='original_save'),
+                               dict(role='companion', package='script', target='cyrus')])
+        self.assertEqual(m.selected_tests(manifest, 'script', 'original_save'), manifest['files'][:1])
+        self.assertEqual(len(m.selected_tests(manifest, None, None)), 2)
+        with self.assertRaisesRegex(ValueError, 'requires a package'):
+            m.selected_tests(manifest, None, 'original_save')
+        for target in ['missing', 'cyrus']:
+            with self.assertRaisesRegex(ValueError, 'exactly one exported test'):
+                m.selected_tests(manifest, 'script', target)
+        with self.assertRaisesRegex(ValueError, 'exactly one exported test'):
+            m.selected_tests(dict(files=manifest['files'] * 2), 'script', 'original_save')
+
     def test_exact_source_rejects_modified_missing_or_extra_blobs(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);path=root/'source.rs';path.write_bytes(b'current source')

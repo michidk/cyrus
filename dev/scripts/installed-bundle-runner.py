@@ -257,12 +257,25 @@ def check_output(result, output):
     return sum(int(passed) for passed, _, _ in summaries)
 
 
+def selected_tests(manifest, package, target):
+    """Retry one authenticated harness without changing its invocation or receipts."""
+    if target and not package:
+        raise ValueError('target retry requires a package')
+    tests = [entry for entry in manifest['files'] if entry['role'] == 'test'
+             and (not package or entry['package'] == package)
+             and (not target or entry['target'] == target)]
+    if target and len(tests) != 1:
+        raise ValueError('target retry requires exactly one exported test')
+    return tests
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ['directory', 'install', 'save_directory']: parser.add_argument(name, type=Path)
     parser.add_argument('--image', default='cyrus-acceptance:419')
     parser.add_argument('--runtime-plan-tool', type=Path, default=Path(__file__).with_name('test_bundle.py'))
     parser.add_argument('--package')
+    parser.add_argument('--target', help='retry one exact exported harness; requires --package')
     parser.add_argument('--fixture-directory', action='append', default=[], metavar='PACKAGE:TARGET=PATH')
     parser.add_argument('--commit', required=True)
     parser.add_argument('--tree', required=True)
@@ -306,8 +319,7 @@ def main():
         default_fixture = fixture_hash(saves)
         overrides = fixture_directories(manifest, args.fixture_directory)
         cache = root / 'raw-cache'; results = root / 'results'; results.mkdir(exist_ok=True)
-        for test in manifest['files']:
-            if test['role'] != 'test' or (args.package and test['package'] != args.package): continue
+        for test in selected_tests(manifest, args.package, args.target):
             entries, projection_hash = projection(manifest, test)
             selected_saves = overrides.get(test['package'] + ':' + test['target'], saves)
             fixture = default_fixture if selected_saves == saves else hashlib.sha256(encoded(
