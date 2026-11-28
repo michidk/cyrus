@@ -53,8 +53,10 @@ that bind everyone are in `AGENTS.md`.
   retired SOUP3 must remain retired.
 - Consume the latest stable `redguard-preservation` release from crates.io.
   Renovate updates its exact version pin and lockfile. Local checks and CI reject
-  Git/path dependencies and source overrides. Unreleased upstream fixes are
-  dependency blockers, not a reason to switch back to a commit.
+  Git/path dependencies and source overrides in the workspace and isolated mods.
+  Isolated mod pins and lockfile checksums must match the workspace release.
+  Unreleased upstream fixes are dependency blockers, not a reason to switch
+  back to a commit.
 - Find the owning issue through [delivery tracking](https://github.com/michidk/cyrus/issues/92)
   or [SOUP #4](https://github.com/michidk/cyrus/issues/4). Claim it with the
   intended scope, agent/session, worktree and shared-file ownership before
