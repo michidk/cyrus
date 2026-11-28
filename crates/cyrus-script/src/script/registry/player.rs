@@ -361,6 +361,10 @@ impl ScriptWorld {
             world.turn_player(id, input.held, holding, timing, sounds)?;
             if airborne {
                 world.control_airborne_player(id, input.held)?;
+                if holding {
+                    world
+                        .run_armed_combat_keys(id, input, query, inputs, timing, random, sounds)?;
+                }
                 return Ok(());
             }
             let moved = match action {

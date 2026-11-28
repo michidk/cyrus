@@ -2537,6 +2537,162 @@ fn armed_no_input_controller_samples_combat_proximity_once() {
     }
 }
 
+#[test]
+fn airborne_armed_controller_samples_and_starts_falling_attack() {
+    use cyrus_script::script::{
+        OrdinaryGroundQuery, PlayerControllerInput, ScriptInputs, WorldRestoreContext,
+        WorldSnapshotSources,
+    };
+    for (armed, queued, falling, jump, action, expected_attack) in [
+        (true, 1, 0, false, false, false),
+        (true, 0, 1, false, true, true),
+        (true, 0, 1, true, true, false),
+        (true, 1, 0, false, true, false),
+        (false, 0, 1, false, true, false),
+    ] {
+        let (scripts, mut world, mut data, mut scene) = player_walking_fixture_with_animation(
+            |scripts| {
+                let player = scripts.actors.get_mut("CYRUS").unwrap();
+                player.attributes[Attribute::HoldingWeapon] = u8::from(armed);
+                player.attributes[Attribute::AttackJumpUp] = 1;
+                scripts.combat_attacks = vec![
+                    combat::Attack {
+                        is_combo: false,
+                        motions: vec![],
+                        min_range: 0,
+                        max_range: 0,
+                    },
+                    combat::Attack {
+                        is_combo: false,
+                        motions: vec![
+                            serde_json::from_value(serde_json::json!({"section":0,"kind":0,
+                        "animation_group":AnimationGroup::FIGHT_FALL_ATTACK.index(),
+                        "min_range":0,"max_range":10000,"arc":4096,"arc_center":0,
+                        "first_collide_frame":0,"collide_duration":0}))
+                            .unwrap(),
+                        ],
+                        min_range: 0,
+                        max_range: 10000,
+                    },
+                ];
+            },
+            |data| {
+                let player = data.metadata["actors"]
+                    .as_array_mut()
+                    .unwrap()
+                    .iter_mut()
+                    .find(|actor| actor["script_name"] == "CYRUS")
+                    .unwrap();
+                player["animation_groups"].as_array_mut().unwrap().push(serde_json::json!({
+                    "group_index":AnimationGroup::FIGHT_FALL_ATTACK.index(),"anim_id":1,"anim_type":0,
+                    "commands":[{"opcode":0,"frame_reference":0},{"opcode":1}]}));
+            },
+        );
+        data.metadata["markers"] = serde_json::json!([]);
+        data.metadata["walk_node_maps"] = serde_json::json!([]);
+        scene.settings.tap_time = Some(8);
+        scene.settings.sheath_sword_delay = Some(12);
+        scene.settings.defend_interval = Some(8);
+        let index = world.selected_player().unwrap().index;
+        let mut saved = movement_snapshot(&world, &scripts, &data);
+        saved["actors"][index]["control"]["queued_motion"] = queued.into();
+        saved["actors"][index]["control"]["falling_state"] = falling.into();
+        world = ScriptWorld::from_snapshot(
+            serde_json::from_value(saved).unwrap(),
+            &WorldSnapshotSources {
+                identity_memo: None,
+                effects: None,
+                player: None,
+                scripts: &scripts,
+                animations: &data,
+                collision: &Default::default(),
+            },
+            WorldRestoreContext {
+                generation: world.generation() + 1,
+                globals: std::mem::take(world.globals_mut()),
+                samples: &BTreeMap::new(),
+            },
+        )
+        .unwrap();
+        let player = world.selected_player().unwrap();
+        let map = world.id(0).unwrap();
+        let prepared = world
+            .prepare_ordinary_collision_query(player, &scene, &data, [10, 30], &[player, map])
+            .unwrap();
+        world.ordinary_actors([10, 30]).unwrap();
+        world.begin_player_movement_update(player, 0).unwrap();
+        let before = world.spatial(player).unwrap().local;
+        let held = cyrus_script::player::input::PlayerInput {
+            jump,
+            action,
+            ..Default::default()
+        };
+        let mut random = cyrus_game::random::EngineRandom::from_state(1627576247);
+        world
+            .advance_player_controller(
+                player,
+                OrdinaryGroundQuery {
+                    scene: &scene,
+                    animations: &data,
+                    prepared: &prepared,
+                    distance: 4,
+                    sidedness: false,
+                },
+                cyrus_script::clock::ClockStep {
+                    frame_scale: 256,
+                    nominal_ticks: 0,
+                    fine_ticks: 0,
+                },
+                ScriptInputs {
+                    player_controller: Some(PlayerControllerInput {
+                        held: &held,
+                        walk_mode: false,
+                        auto_defend: false,
+                        steer: None,
+                        claim: None,
+                        probes: None,
+                    }),
+                    shell_execution: Some(false),
+                    frame_scale: Some(256),
+                    nominal_ticks: Some(0),
+                    combat_clock_sample: Some(100),
+                    ..Default::default()
+                },
+                &mut random,
+                &mut |_, _| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(
+            random.state(),
+            if armed { 2054802212 } else { 1627576247 },
+            "armed={armed}, queued={queued}, falling={falling}, jump={jump}, action={action}"
+        );
+        assert_eq!(
+            world.spatial(player).unwrap().local.position,
+            before.position
+        );
+        assert_eq!(world.spatial(player).unwrap().local.angles, before.angles);
+        let control = world.actors()[player.index].control_state().unwrap();
+        assert_eq!(
+            control.combat.as_ref().unwrap().action,
+            if expected_attack {
+                cyrus_script::script::CombatControlState::JUMP_UP_ACTION
+            } else {
+                cyrus_script::script::CombatControlState::NO_ACTION
+            }
+        );
+        let observed = movement_snapshot(&world, &scripts, &data);
+        assert_eq!(
+            observed["actors"][player.index]["animation"]["playback"]["current"][0],
+            serde_json::json!(if expected_attack {
+                AnimationGroup::FIGHT_FALL_ATTACK
+            } else {
+                AnimationGroup::PANIC
+            })
+        );
+    }
+}
+
 fn proximity_world_with_target(
     mut world: ScriptWorld,
     scripts: &Scripts,

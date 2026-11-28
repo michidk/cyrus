@@ -43,6 +43,10 @@ that needs a persistent registry target rejects a temporary source rather than
 substituting its former record index. Source state before any assigning entry
 remains unavailable. Preservation owns the [temporary storage lifetime](https://github.com/michidk/redguard-preservation/blob/main/docs/engine/SOUP.md#separate-map-object-script-state).
 
+The selected player's airborne steering retains the armed controller tail: proximity
+sampling still runs, and released jump input permits stance and authored falling-attack
+selection. Ground movement remains disabled while airborne.
+
 Original combat import binds the saved attack and defence selectors to their
 respective host executor owners. Their serialized order differs from the host's
 retained move order; an absent defence selector does not replace a saved attack
